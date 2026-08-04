@@ -1,16 +1,17 @@
 import type { AIService } from "./ai.types";
-import { AnthropicProvider } from "./anthropic.provider";
+import { GeminiProvider } from "./gemini.provider";
 import { mockAIProvider } from "./mock.provider";
 
 function createAIService(): AIService {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (apiKey && apiKey.length > 10) {
-    console.log("[AI] Using Anthropic Claude provider");
-    return new AnthropicProvider(apiKey);
+    const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+    console.log(`[AI] Using Google Gemini provider (${model})`);
+    return new GeminiProvider(apiKey, model);
   }
 
-  console.log("[AI] Using mock provider (set ANTHROPIC_API_KEY to use Claude)");
+  console.log("[AI] Using mock provider (set GEMINI_API_KEY to use Gemini)");
   return mockAIProvider;
 }
 

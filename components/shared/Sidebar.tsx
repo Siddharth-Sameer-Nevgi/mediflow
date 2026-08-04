@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { authClient } from "@/lib/auth/client";
+import { normalizeRole } from "@/lib/auth/roles";
 import {
   Activity,
   Calendar,
@@ -61,12 +62,12 @@ const adminNav = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  const role = session?.user?.role ?? "PATIENT";
+  const role = normalizeRole(session?.user?.role);
   const navItems =
     role === "DOCTOR" ? doctorNav : role === "ADMIN" ? adminNav : patientNav;
 
@@ -164,7 +165,7 @@ export function Sidebar() {
         </div>
 
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => authClient.signOut()}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all",
             collapsed && "justify-center"

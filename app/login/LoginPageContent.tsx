@@ -2,23 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { signIn } from "next-auth/react";
 import { toast } from "sonner";
 import { Activity, Mail, KeyRound, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validations";
+import { authClient } from "@/lib/auth/client";
 
 export default function LoginPageContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [devOtp, setDevOtp] = useState<string | null>(null);
 
   const {
     register,
@@ -39,19 +37,17 @@ export default function LoginPageContent() {
   const sendOtp = async (emailAddr: string) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/resend-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailAddr }),
+      // Neon Auth generates, stores, and emails the code.
+      const { error } = await authClient.emailOtp.sendVerificationOtp({
+        email: emailAddr,
+        type: "sign-in",
       });
-      const data = await res.json();
 
-      if (!res.ok) {
-        toast.error(data.error ?? "Failed to send OTP");
+      if (error) {
+        toast.error(error.message ?? "Failed to send OTP");
         return false;
       }
 
-      if (data.devOtp) setDevOtp(data.devOtp);
       setEmail(emailAddr);
       setStep("otp");
       toast.success("OTP sent to your email");
@@ -106,21 +102,30 @@ export default function LoginPageContent() {
 
     setLoading(true);
     try {
-      const result = await signIn("credentials", {
+      const { error } = await authClient.signIn.emailOtp({
         email,
         otp: otpString,
-        redirect: false,
       });
 
-      if (result?.error) {
-        toast.error("Invalid or expired OTP. Please try again.");
+      if (error) {
+        toast.error(error.message ?? "Invalid or expired OTP. Please try again.");
         setOtp(["", "", "", "", "", ""]);
         document.getElementById("otp-0")?.focus();
-      } else {
-        toast.success("Welcome back!");
-        router.push("/patient/dashboard");
-        router.refresh();
+        return;
       }
+
+      // Sync the Prisma profile and find out where this role belongs.
+      const res = await fetch("/api/user/bootstrap", { method: "POST" });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error ?? "Signed in, but your profile failed to load.");
+        return;
+      }
+
+      toast.success("Welcome back!");
+      router.push(data.redirectTo);
+      router.refresh();
     } catch {
       toast.error("Authentication failed. Please try again.");
     } finally {
@@ -182,13 +187,6 @@ export default function LoginPageContent() {
               </div>
               <p className="text-slate-300 text-sm">Enter the 6-digit code sent to</p>
               <p className="text-white font-semibold text-sm">{email}</p>
-              {devOtp && (
-                <div className="mt-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                  <p className="text-amber-400 text-xs font-mono">
-                    [DEV] Your OTP: <strong>{devOtp}</strong>
-                  </p>
-                </div>
-              )}
             </div>
 
             <div className="flex gap-2 justify-center">

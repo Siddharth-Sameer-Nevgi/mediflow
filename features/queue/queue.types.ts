@@ -17,10 +17,8 @@ export interface QueueEntryWithPatient {
     notes: string | null;
     patient: {
       id: string;
-      user: {
-        name: string;
-        email: string;
-      };
+      name: string;
+      email: string;
     };
   };
 }

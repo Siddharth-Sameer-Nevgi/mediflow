@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { aiService } from "@/features/ai/ai.service";
 import { predictWaitSchema } from "@/lib/validations";
 import { prisma } from "@/lib/prisma";
 import { AppointmentType } from "@prisma/client";
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

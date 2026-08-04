@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { signOut } from "next-auth/react";
+import { authClient } from "@/lib/auth/client";
 import {
   User, Phone, Bell, Shield, LogOut, Loader2, Save, Clock,
 } from "lucide-react";
@@ -182,7 +182,7 @@ export default function DoctorSettingsPage() {
       {/* Sign out */}
       <Section title="Session">
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => authClient.signOut()}
           className="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm font-medium transition-colors hover:bg-red-500/10 px-4 py-2.5 rounded-xl w-full"
         >
           <LogOut className="w-4 h-4" />

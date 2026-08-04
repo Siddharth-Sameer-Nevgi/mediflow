@@ -1,6 +1,45 @@
-import { PrismaClient, Role } from "@prisma/client";
+import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 
-const prisma = new PrismaClient();
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is not set. Add it to .env before seeding.");
+}
+
+const pool = new Pool({ connectionString: databaseUrl });
+
+const prisma = new PrismaClient({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: new PrismaPg(pool) as any,
+});
+
+type SeedRole = "PATIENT" | "DOCTOR" | "ADMIN";
+
+/**
+ * Create (or fetch) a Neon Auth user.
+ *
+ * The seed runs under ts-node, outside Next.js, so it cannot use the Neon Auth
+ * SDK's server instance. `neon_auth.user` lives in this same database and the
+ * emailOTP flow signs in any existing user by email, so seeding the row
+ * directly is enough — the demo accounts sign in with an emailed code, no
+ * password or credential row required.
+ */
+async function upsertAuthUser(
+  prisma: PrismaClient,
+  email: string,
+  name: string,
+  role: SeedRole
+): Promise<string> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    INSERT INTO neon_auth."user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
+    VALUES (gen_random_uuid(), ${name}, ${email}, true, ${role}, now(), now())
+    ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role
+    RETURNING id
+  `;
+  return rows[0].id;
+}
 
 async function main() {
   console.log("🌱 Seeding MediFlow database...");
@@ -86,23 +125,20 @@ async function main() {
   ];
 
   for (const docData of doctorsData) {
-    const user = await prisma.user.upsert({
-      where: { email: docData.email },
-      update: {},
-      create: {
-        email: docData.email,
-        name: docData.name,
-        role: Role.DOCTOR,
-        emailVerified: true,
-        // No OTP needed for seeded accounts
-      },
-    });
+    const userId = await upsertAuthUser(
+      prisma,
+      docData.email,
+      docData.name,
+      "DOCTOR"
+    );
 
     await prisma.doctor.upsert({
-      where: { userId: user.id },
-      update: {},
+      where: { userId },
+      update: { name: docData.name, email: docData.email },
       create: {
-        userId: user.id,
+        userId,
+        name: docData.name,
+        email: docData.email,
         departmentId: deptMap[docData.deptCode].id,
         specialization: docData.specialization,
         licenseNumber: docData.licenseNumber,
@@ -114,56 +150,53 @@ async function main() {
   }
 
   // Create a sample patient
-  const patientUser = await prisma.user.upsert({
-    where: { email: "patient@mediflow.ai" },
-    update: {},
-    create: {
-      email: "patient@mediflow.ai",
-      name: "Raj Kumar",
-      role: Role.PATIENT,
-      emailVerified: true,
-    },
-  });
+  const patientId = await upsertAuthUser(
+    prisma,
+    "patient@mediflow.ai",
+    "Raj Kumar",
+    "PATIENT"
+  );
 
   await prisma.patient.upsert({
-    where: { userId: patientUser.id },
-    update: {},
+    where: { userId: patientId },
+    update: { name: "Raj Kumar", email: "patient@mediflow.ai" },
     create: {
-      userId: patientUser.id,
+      userId: patientId,
+      name: "Raj Kumar",
+      email: "patient@mediflow.ai",
       bloodGroup: "O+",
     },
   });
   console.log("✅ Sample patient created");
 
   // Create admin user
-  const adminUser = await prisma.user.upsert({
-    where: { email: "admin@mediflow.ai" },
-    update: {},
-    create: {
-      email: "admin@mediflow.ai",
-      name: "Hospital Admin",
-      role: Role.ADMIN,
-      emailVerified: true,
-    },
-  });
+  const adminId = await upsertAuthUser(
+    prisma,
+    "admin@mediflow.ai",
+    "Hospital Admin",
+    "ADMIN"
+  );
 
   await prisma.admin.upsert({
-    where: { userId: adminUser.id },
-    update: {},
+    where: { userId: adminId },
+    update: { name: "Hospital Admin", email: "admin@mediflow.ai" },
     create: {
-      userId: adminUser.id,
+      userId: adminId,
+      name: "Hospital Admin",
+      email: "admin@mediflow.ai",
       hospitalId: hospital.id,
     },
   });
   console.log("✅ Admin created");
 
   console.log("\n🎉 Database seeded successfully!");
-  console.log("\n📧 Demo accounts (use OTP login with the email — OTP will be printed to console):");
+  console.log("\n📧 Demo accounts (OTP sign-in — the code is emailed, so these addresses must be deliverable):");
   console.log("  Patient: patient@mediflow.ai");
   console.log("  Doctor: dr.arjun.sharma@mediflow.ai");
   console.log("  Doctor: dr.priya.nair@mediflow.ai");
   console.log("  Admin: admin@mediflow.ai");
-  console.log("\n  Note: These accounts are pre-verified. Use the login page with these emails.");
+  console.log("\n  Note: These accounts are pre-verified, but sign-in still requires receiving");
+  console.log("  the emailed OTP. Change these to addresses you control before testing login.");
 }
 
 main()

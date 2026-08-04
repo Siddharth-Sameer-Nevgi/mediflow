@@ -17,13 +17,8 @@ export async function getQueueByDoctor(
     include: {
       appointment: {
         include: {
-          patient: {
-            include: {
-              user: {
-                select: { name: true, email: true },
-              },
-            },
-          },
+          // name/email are columns on Patient now — identity lives in Neon Auth.
+          patient: true,
         },
       },
     },
@@ -58,7 +53,7 @@ export async function getNextInQueue(doctorId: string) {
     include: {
       appointment: {
         include: {
-          patient: { include: { user: true } },
+          patient: true,
         },
       },
     },

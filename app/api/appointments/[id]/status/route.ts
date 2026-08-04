@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { updateAppointmentStatusSchema } from "@/lib/validations";
 
@@ -7,8 +7,8 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "DOCTOR") {
+  const session = await getSessionUser();
+  if (!session || session.role !== "DOCTOR") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,7 +34,7 @@ export async function PATCH(
 
     await prisma.auditLog.create({
       data: {
-        userId: session.user.id,
+        userId: session.id,
         action: `STATUS_CHANGE_${status}`,
         entity: "Appointment",
         entityId: id,
@@ -53,8 +53,8 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

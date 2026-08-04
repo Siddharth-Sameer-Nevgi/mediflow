@@ -10,7 +10,8 @@ import type {
 
 /**
  * Intelligent mock AI provider.
- * Used when ANTHROPIC_API_KEY is not set.
+ * Used when GEMINI_API_KEY is not set, and as the fallback whenever a live
+ * Gemini call fails or returns an unusable response.
  * Produces realistic results using heuristics.
  */
 export class MockAIProvider implements AIService {

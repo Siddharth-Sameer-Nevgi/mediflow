@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -7,8 +7,8 @@ import { prisma } from "@/lib/prisma";
  * Toggle availability or update avgConsultMins
  */
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -20,7 +20,7 @@ export async function PATCH(req: NextRequest) {
     };
 
     const doctor = await prisma.doctor.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: session.id },
     });
 
     if (!doctor) {
@@ -34,7 +34,6 @@ export async function PATCH(req: NextRequest) {
         ...(avgConsultMins !== undefined && { avgConsultMins }),
       },
       include: {
-        user: { select: { name: true, email: true } },
         department: { select: { name: true } },
       },
     });
@@ -47,16 +46,15 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const doctor = await prisma.doctor.findUnique({
-      where: { userId: session.user.id },
+      where: { userId: session.id },
       include: {
-        user: { select: { name: true, email: true, phone: true } },
         department: { select: { name: true, code: true } },
       },
     });

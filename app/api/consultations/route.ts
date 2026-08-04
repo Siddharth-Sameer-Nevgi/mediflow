@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -7,8 +7,8 @@ import { prisma } from "@/lib/prisma";
  * Body: { appointmentId, action: "start" | "end", notes?: string }
  */
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "DOCTOR") {
+  const session = await getSessionUser();
+  if (!session || session.role !== "DOCTOR") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify doctor owns this appointment
-    if (appointment.doctor.userId !== session.user.id) {
+    if (appointment.doctor.userId !== session.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

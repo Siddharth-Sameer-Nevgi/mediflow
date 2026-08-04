@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 // Auth schemas
+// No `role` field: Neon Auth owns roles, and letting a client pick its own
+// would be privilege escalation. Self-registration always yields PATIENT.
 export const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
-  role: z.enum(["PATIENT", "DOCTOR", "ADMIN"]),
 });
 
 export const loginSchema = z.object({

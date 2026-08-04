@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "@/components/shared/NotificationBell";
-import { useSession } from "next-auth/react";
+import { authClient } from "@/lib/auth/client";
 import { Activity } from "lucide-react";
 
 const routeLabels: Record<string, string> = {
@@ -35,7 +35,7 @@ function getPageLabel(pathname: string): string {
 
 export function Topbar() {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const label = getPageLabel(pathname);
 
   return (

@@ -17,10 +17,6 @@ export function formatConfidence(confidence: number): string {
   return `${Math.round(confidence * 100)}%`;
 }
 
-export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
 export function generateTokenNumber(): number {
   return Math.floor(1 + Math.random() * 999);
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { getQueuePosition } from "@/features/queue/queue.repository";
 import { prisma } from "@/lib/prisma";
 
@@ -7,8 +7,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ appointmentId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

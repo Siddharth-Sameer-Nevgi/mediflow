@@ -4,6 +4,8 @@ An AI-assisted hospital OPD queue management system. Patients book appointments 
 
 Built on Next.js 16 (App Router) with a standalone Socket.IO server for real-time queue events.
 
+Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
 ## Features
@@ -41,14 +43,14 @@ Built on Next.js 16 (App Router) with a standalone Socket.IO server for real-tim
 | Framework | Next.js 16.2 (App Router), React 19 |
 | Language | TypeScript (strict) |
 | Database | PostgreSQL via Prisma 7 (`@prisma/adapter-pg`) — built against Neon |
-| Auth | Auth.js v5 (`next-auth@5` beta) — Credentials provider with email OTP, JWT sessions, Prisma adapter |
+| Auth | **Neon Auth** (`@neondatabase/auth`, Managed Better Auth) — email OTP, sessions and roles in the Neon-managed `neon_auth` schema |
 | Real-time | Standalone Express + Socket.IO server ([server/socket-server.ts](server/socket-server.ts)) |
 | Server state | TanStack Query v5 |
 | Client state | Zustand |
 | UI | Tailwind CSS v4, Radix UI primitives, `lucide-react`, `recharts`, `sonner` |
 | Forms | React Hook Form + Zod v4 |
 | Email | Resend (falls back to console logging in dev) |
-| AI | Anthropic Claude via the Messages API (falls back to a deterministic mock provider) |
+| AI | Google Gemini via the REST API (falls back to a deterministic mock provider) |
 
 ---
 
@@ -66,7 +68,7 @@ components/
   providers.tsx           SessionProvider + QueryClientProvider + ThemeProvider
 features/
   queue/                  queue.repository.ts (data access) + queue.service.ts (transactions)
-  ai/                     ai.service.ts picks anthropic.provider.ts or mock.provider.ts
+  ai/                     ai.service.ts picks gemini.provider.ts or mock.provider.ts
 hooks/                    useRealtimeNotifications
 lib/
   auth.ts                 Auth.js config, JWT/session callbacks, Session type augmentation
@@ -104,11 +106,12 @@ cp .env.example .env
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `AUTH_SECRET` | ✅ | Random 32+ char secret for Auth.js |
-| `AUTH_URL` | ✅ | `http://localhost:3000` in dev |
-| `RESEND_API_KEY` | — | Omit in dev and OTPs are printed to the server console instead of emailed |
-| `EMAIL_FROM` | — | Sender address for OTP emails |
-| `ANTHROPIC_API_KEY` | — | Omit and the mock AI provider is used |
+| `NEON_AUTH_BASE_URL` | ✅ | From the Neon console — e.g. `https://ep-xxx.neonauth.<region>.aws.neon.tech/neondb/auth` |
+| `NEON_AUTH_COOKIE_SECRET` | ✅ | 32+ chars; `openssl rand -base64 32` |
+| `RESEND_API_KEY` | — | No longer used for auth; Neon Auth sends OTP mail via its shared sender |
+| `EMAIL_FROM` | — | Unused by authentication |
+| `GEMINI_API_KEY` | — | Omit and the mock AI provider is used. Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | — | Model override; defaults to `gemini-2.5-flash` |
 | `SOCKET_SERVER_URL` | — | Where route handlers POST emit events (default `http://localhost:3001`) |
 | `SOCKET_SERVER_SECRET` | — | Shared bearer token for the socket server's `/emit` endpoint |
 | `NEXT_PUBLIC_APP_URL` | — | Used for the socket server's CORS origin |
@@ -141,7 +144,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### 5. Log in
 
-The seed creates pre-verified demo accounts. Enter one of these emails on `/login`, then read the OTP from the terminal running `npm run dev` (or from the `devOtp` field in the API response, which is only returned when `NODE_ENV === "development"`):
+Sign-in is email OTP only, delivered by Neon Auth. Enter your email on `/login`, then enter the 6-digit code from your inbox. **There is no development bypass.**
+
+The seed creates these demo accounts in `neon_auth.user`:
 
 | Role | Email |
 | --- | --- |
@@ -149,6 +154,8 @@ The seed creates pre-verified demo accounts. Enter one of these emails on `/logi
 | Doctor | `dr.arjun.sharma@mediflow.ai` |
 | Doctor | `dr.priya.nair@mediflow.ai` |
 | Admin | `admin@mediflow.ai` |
+
+⚠️ **`@mediflow.ai` is not a real mailbox.** To sign in as a demo user, edit the emails in [prisma/seed.ts](prisma/seed.ts) to addresses you control and re-run `npm run db:seed`. Neon Auth's shared email sender delivers the code to whatever address the account uses.
 
 ---
 
@@ -168,6 +175,41 @@ The seed creates pre-verified demo accounts. Enter one of these emails on `/logi
 
 ---
 
+## Authentication
+
+Passwordless email OTP, handled entirely by **Neon Auth**. The app no longer generates, stores, hashes, or expires codes — Neon does, and its shared email sender delivers them.
+
+**Identity lives outside Prisma.** Users, sessions, and roles are rows in the Neon-managed `neon_auth` schema in the same database. That schema is not modelled in `schema.prisma` and must never be touched by `prisma db push`.
+
+| Concern | Owner |
+| --- | --- |
+| User record, email, display name | `neon_auth.user` |
+| Sessions and cookies | `neon_auth.session`, signed with `NEON_AUTH_COOKIE_SECRET` |
+| Role (`PATIENT` / `DOCTOR` / `ADMIN`) | `neon_auth.user.role` |
+| Clinical profile, phone, appointments | Prisma `Patient` / `Doctor` / `Admin` |
+
+Because Prisma cannot join across into `neon_auth`, each profile row keeps a denormalised `name` / `email`, re-synced on every sign-in by [lib/auth/profile.ts](lib/auth/profile.ts).
+
+**Flow**
+
+1. `authClient.emailOtp.sendVerificationOtp({ email, type: "sign-in" })` — Neon emails the code.
+2. `authClient.signIn.emailOtp({ email, otp })` — Neon verifies and sets the session cookie.
+3. `POST /api/user/bootstrap` — reconciles the Prisma profile and returns the role's landing route.
+
+**Key files**
+
+| File | Role |
+| --- | --- |
+| [lib/auth/server.ts](lib/auth/server.ts) | `createNeonAuth` instance for server components, route handlers, proxy |
+| [lib/auth/client.ts](lib/auth/client.ts) | Browser client; `authClient.useSession()` |
+| [lib/auth/session.ts](lib/auth/session.ts) | `getSessionUser()` — the authoritative check in every route handler |
+| [lib/auth/roles.ts](lib/auth/roles.ts) | Client-safe role helpers (no Prisma import, so it's bundle-safe) |
+| [app/api/auth/[...path]/route.ts](app/api/auth/[...path]/route.ts) | Proxies `/api/auth/*` to Neon Auth |
+
+**Roles are not self-assignable.** Registration always creates a `PATIENT`; `registerSchema` has no `role` field and `/api/user/bootstrap` ignores any client-supplied role. Doctor and admin accounts are provisioned by the seed or by an admin through `POST /api/doctors`.
+
+> `normalizeRole()` defaults any unrecognised value to `PATIENT` — `neon_auth.user.role` is free text, so it is never trusted verbatim.
+
 ## How the real-time layer works
 
 The Socket.IO server is a separate process, not a Next.js route. It exposes a `/queue` namespace where clients join rooms by identity:
@@ -184,13 +226,20 @@ A `GET /health` endpoint on the socket server reports the live connection count.
 
 ## AI integration
 
-[features/ai/ai.service.ts](features/ai/ai.service.ts) selects a provider at module load: `AnthropicProvider` when `ANTHROPIC_API_KEY` is set, otherwise `mockAIProvider`. Both implement the same `AIService` interface, so every consumer works offline and without an API key.
+[features/ai/ai.service.ts](features/ai/ai.service.ts) selects a provider at module load: `GeminiProvider` when `GEMINI_API_KEY` is set, otherwise `mockAIProvider`. Both implement the same `AIService` interface, so every consumer works offline and without an API key.
+
+[features/ai/gemini.provider.ts](features/ai/gemini.provider.ts) calls the Gemini REST endpoint with plain `fetch` — no SDK dependency — and requests `responseMimeType: "application/json"` so the model returns bare JSON with no markdown fences to strip. It degrades rather than fails:
+
+- Every call has an 8s timeout, because appointment booking awaits the prediction.
+- Any error, timeout, or unparseable response falls back to the mock heuristics; the AI is never a hard dependency for booking.
+- Triage output is validated against the known department and urgency enums. Anything outside them is discarded and the heuristic result is used instead, so the model can't route a patient to a department that doesn't exist.
+- The medical disclaimer is attached in code, never taken from the model.
 
 | Capability | Where it's used |
 | --- | --- |
 | `triageSymptoms` | `POST /api/ai/triage` — patient booking flow suggests a department |
-| `predictWaitTime` | `POST /api/ai/predict-wait` and appointment creation — estimated wait + confidence |
-| `detectNoShowRisk` | Appointment creation — stored on `Appointment.noShowRisk` |
+| `predictWaitTime` | `POST /api/ai/predict-wait` and appointment creation — the estimate itself is arithmetic; Gemini only refines confidence and applies a ±10 min correction |
+| `detectNoShowRisk` | Appointment creation — purely statistical, no model call |
 
 Free-text symptom input passes through `sanitizeForAI()` in [lib/utils.ts](lib/utils.ts) before it reaches the model, and triage responses carry a medical disclaimer.
 
@@ -240,4 +289,7 @@ Handlers validate their bodies with Zod schemas from [lib/validations/index.ts](
 - **This is Next.js 16.** Middleware is `proxy.ts` at the project root, not `middleware.ts`. Check `node_modules/next/dist/docs/` before assuming an API matches an older version — see [AGENTS.md](AGENTS.md).
 - Role checks in `proxy.ts` are an optimistic redirect layer; the authoritative check is the `session.user.role` guard inside each route handler.
 - The socket server's `/emit` endpoint is protected only by a shared secret — keep it on a private network or behind an authenticated gateway in production.
+- The auth endpoints still allow **user enumeration**: `/api/auth/register` returns `409` for a known email and `/api/auth/resend-otp` returns `404` for an unknown one. Returning a generic response for both would close this, at the cost of a less helpful UX.
+- OTP rate limiting is per-account (the 60s cooldown), not per-IP. `UPSTASH_REDIS_REST_URL` / `_TOKEN` are reserved in `.env.example` for IP-level limiting, but no such code exists yet.
+- Registering as `DOCTOR` or `ADMIN` creates the `User` but no matching `Doctor`/`Admin` row, so those accounts land without a profile. Only `PATIENT` self-registration is complete — see [app/api/auth/register/route.ts](app/api/auth/register/route.ts).
 - There is no test suite in the repo yet.

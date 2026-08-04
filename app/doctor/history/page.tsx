@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { format } from "date-fns";
 import { FileText, Clock, Users, CheckCircle2, Timer } from "lucide-react";
@@ -7,9 +7,9 @@ import type { Metadata } from "next";
 export const metadata: Metadata = { title: "Consultation History | MediFlow AI" };
 
 export default async function DoctorHistoryPage() {
-  const session = await auth();
+  const session = await getSessionUser();
   const doctor = await prisma.doctor.findUnique({
-    where: { userId: session!.user.id },
+    where: { userId: session!.id },
     include: {
       appointments: {
         where: {
@@ -19,7 +19,7 @@ export default async function DoctorHistoryPage() {
         orderBy: { scheduledAt: "desc" },
         take: 100,
         include: {
-          patient: { include: { user: { select: { name: true, email: true } } } },
+          patient: {},
           department: { select: { name: true } },
           consultLog: { select: { durationMins: true } },
         },
@@ -84,7 +84,7 @@ export default async function DoctorHistoryPage() {
                     <span className="text-emerald-400 font-bold text-sm">#{appt.tokenNumber}</span>
                   </div>
                   <div>
-                    <p className="text-white font-semibold text-sm">{appt.patient.user.name}</p>
+                    <p className="text-white font-semibold text-sm">{appt.patient.name}</p>
                     <p className="text-slate-400 text-xs">{appt.appointmentType.replace(/_/g, " ")} · {appt.department.name}</p>
                     <p className="text-slate-500 text-xs mt-0.5">
                       {format(new Date(appt.scheduledAt), "MMM d, yyyy 'at' h:mm a")}

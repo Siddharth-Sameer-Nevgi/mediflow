@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { format } from "date-fns";
 import { FileText, Activity, Clock, TrendingUp, Calendar, CheckCircle2 } from "lucide-react";
@@ -16,16 +16,15 @@ const statusColors: Record<string, string> = {
 };
 
 export default async function PatientHistoryPage() {
-  const session = await auth();
+  const session = await getSessionUser();
   const patient = await prisma.patient.findUnique({
-    where: { userId: session!.user.id },
+    where: { userId: session!.id },
     include: {
       appointments: {
         where: { deletedAt: null },
         orderBy: { scheduledAt: "desc" },
         include: {
           doctor: {
-            include: { user: { select: { name: true } } },
           },
           department: { select: { name: true } },
         },
@@ -87,7 +86,7 @@ export default async function PatientHistoryPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-white font-semibold text-sm truncate">
-                      Dr. {appt.doctor.user.name}
+                      Dr. {appt.doctor.name}
                     </p>
                     <p className="text-slate-400 text-xs">
                       {appt.department.name} · {appt.appointmentType.replace(/_/g, " ")}

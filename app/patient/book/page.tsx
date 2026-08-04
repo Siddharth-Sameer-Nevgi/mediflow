@@ -44,10 +44,10 @@ interface Department {
 
 interface Doctor {
   id: string;
+  name: string;
   specialization: string;
   avgConsultMins: number;
   isAvailable: boolean;
-  user: { name: string };
   _count: { appointments: number };
 }
 
@@ -181,7 +181,7 @@ export default function BookAppointmentPage() {
       const params = new URLSearchParams({
         appointmentId: data.appointment.id,
         tokenNumber: String(data.appointment.tokenNumber),
-        doctorName: selectedDoctor?.user.name ?? "",
+        doctorName: selectedDoctor?.name ?? "",
         departmentName: selectedDept?.name ?? "",
         scheduledAt: data.appointment.scheduledAt,
         estimatedWaitMins: String(
@@ -561,7 +561,7 @@ export default function BookAppointmentPage() {
                       }`}
                     >
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shrink-0 text-white font-bold text-sm">
-                        {doc.user.name
+                        {doc.name
                           .split(" ")
                           .map((n) => n[0])
                           .join("")
@@ -569,7 +569,7 @@ export default function BookAppointmentPage() {
                       </div>
                       <div className="flex-1">
                         <p className="text-white font-semibold text-sm">
-                          {doc.user.name}
+                          {doc.name}
                         </p>
                         <p className="text-slate-400 text-xs">
                           {doc.specialization}
@@ -753,7 +753,7 @@ export default function BookAppointmentPage() {
               {[
                 { label: "Hospital", value: selectedHospital?.name },
                 { label: "Department", value: selectedDept?.name },
-                { label: "Doctor", value: selectedDoctor?.user.name },
+                { label: "Doctor", value: selectedDoctor?.name },
                 {
                   label: "Date",
                   value: `${format(selectedDate, "EEEE, MMMM d, yyyy")} at ${selectedSlot}`,

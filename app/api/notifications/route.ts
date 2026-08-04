@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   try {
     const notifications = await prisma.notification.findMany({
       where: {
-        userId: session.user.id,
+        userId: session.id,
         ...(unreadOnly && { isRead: false }),
       },
       orderBy: { createdAt: "desc" },
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     });
 
     const unreadCount = await prisma.notification.count({
-      where: { userId: session.user.id, isRead: false },
+      where: { userId: session.id, isRead: false },
     });
 
     return NextResponse.json({ notifications, unreadCount });
@@ -35,14 +35,14 @@ export async function GET(req: NextRequest) {
 
 // Mark all as read
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     await prisma.notification.updateMany({
-      where: { userId: session.user.id, isRead: false },
+      where: { userId: session.id, isRead: false },
       data: { isRead: true },
     });
 

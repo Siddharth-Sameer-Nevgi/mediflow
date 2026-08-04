@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSession } from "next-auth/react";
+import { authClient } from "@/lib/auth/client";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
 import { toast } from "sonner";
 import {
@@ -34,7 +34,8 @@ interface QueueEntry {
     isEmergency: boolean;
     notes: string | null;
     patient: {
-      user: { name: string; email: string };
+      name: string;
+      email: string;
     };
   };
 }
@@ -84,7 +85,7 @@ function ConsultationTimer({
 }
 
 export default function DoctorDashboard() {
-  const { data: session } = useSession();
+  const { data: session } = authClient.useSession();
   const queryClient = useQueryClient();
   const [connected, setConnected] = useState(false);
   const [consultingAppointmentId, setConsultingAppointmentId] = useState<string | null>(null);
@@ -284,7 +285,7 @@ export default function DoctorDashboard() {
           <div className="flex items-center gap-4">
             <div className="flex-1">
               <p className="text-white font-bold text-lg">
-                {currentPatient.appointment.patient.user.name}
+                {currentPatient.appointment.patient.name}
               </p>
               <p className="text-slate-400 text-sm">
                 {currentPatient.appointment.appointmentType.replace(/_/g, " ")}
@@ -325,7 +326,7 @@ export default function DoctorDashboard() {
               <p className="text-slate-400 text-sm">
                 <strong className="text-white">
                   {queue.find((q) => q.appointment.status !== "IN_CONSULTATION")
-                    ?.appointment.patient.user.name ?? "Next patient"}
+                    ?.appointment.patient.name ?? "Next patient"}
                 </strong>{" "}
                 (Token #
                 {queue.find((q) =>
@@ -399,7 +400,7 @@ export default function DoctorDashboard() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="text-white font-medium text-sm truncate">
-                      {entry.appointment.patient.user.name}
+                      {entry.appointment.patient.name}
                     </p>
                     {entry.appointment.isEmergency && (
                       <span className="text-xs bg-red-500/20 text-red-300 border border-red-500/30 px-1.5 py-0.5 rounded-full font-medium shrink-0">

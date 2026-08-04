@@ -18,8 +18,8 @@ import {
 
 interface Doctor {
   id: string;
+  name: string;
   specialization: string;
-  user: { name: string; email: string };
   department: { name: string };
 }
 
@@ -32,7 +32,7 @@ interface QueueEntry {
     tokenNumber: number;
     status: string;
     isEmergency: boolean;
-    patient: { user: { name: string; email: string } };
+    patient: { name: string; email: string };
   };
 }
 
@@ -79,7 +79,7 @@ export default function EmergencyOverridePage() {
   // Filter by search
   const filteredQueue = queue.filter((entry) => {
     const name =
-      entry.appointment.patient.user.name.toLowerCase();
+      entry.appointment.patient.name.toLowerCase();
     const token = String(entry.appointment.tokenNumber);
     const q = search.toLowerCase();
     return name.includes(q) || token.includes(q) || entry.appointmentId.includes(q);
@@ -198,7 +198,7 @@ export default function EmergencyOverridePage() {
               <option value="">— Choose a doctor —</option>
               {doctors.map((d) => (
                 <option key={d.id} value={d.id}>
-                  Dr. {d.user.name} · {d.specialization} ·{" "}
+                  Dr. {d.name} · {d.specialization} ·{" "}
                   {d.department.name}
                 </option>
               ))}
@@ -306,7 +306,7 @@ export default function EmergencyOverridePage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-white font-medium text-sm truncate">
-                        {entry.appointment.patient.user.name}
+                        {entry.appointment.patient.name}
                       </p>
                       {entry.appointment.isEmergency && (
                         <span className="text-xs bg-red-500/20 text-red-300 border border-red-500/30 px-1.5 py-0.5 rounded-full font-medium shrink-0">
@@ -316,7 +316,7 @@ export default function EmergencyOverridePage() {
                     </div>
                     <p className="text-slate-500 text-xs mt-0.5">
                       Token #{entry.appointment.tokenNumber} ·{" "}
-                      {entry.appointment.patient.user.email} · ~
+                      {entry.appointment.patient.email} · ~
                       {Math.round(entry.estimatedWaitMins)} min wait
                     </p>
                     <p className="text-slate-600 text-xs font-mono">
@@ -391,7 +391,7 @@ export default function EmergencyOverridePage() {
             <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-4">
               <p className="text-slate-400 text-xs mb-1">Patient</p>
               <p className="text-white font-semibold">
-                {confirmEntry.appointment.patient.user.name}
+                {confirmEntry.appointment.patient.name}
               </p>
               <p className="text-slate-400 text-sm mt-1">
                 Token #{confirmEntry.appointment.tokenNumber} · Currently at

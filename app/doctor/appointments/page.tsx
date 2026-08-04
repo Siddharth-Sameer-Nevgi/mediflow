@@ -18,7 +18,7 @@ interface Appointment {
   appointmentType: string;
   notes?: string | null;
   isEmergency: boolean;
-  patient: { user: { name: string; email: string } };
+  patient: { name: string; email: string };
   department: { name: string };
 }
 
@@ -89,8 +89,8 @@ export default function DoctorAppointmentsPage() {
       const q = search.toLowerCase();
       list = list.filter(
         (a) =>
-          a.patient.user.name.toLowerCase().includes(q) ||
-          a.patient.user.email.toLowerCase().includes(q) ||
+          a.patient.name.toLowerCase().includes(q) ||
+          a.patient.email.toLowerCase().includes(q) ||
           a.department.name.toLowerCase().includes(q)
       );
     }
@@ -187,7 +187,7 @@ export default function DoctorAppointmentsPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2 mb-0.5">
-                              <p className="text-white font-semibold text-sm">{appt.patient.user.name}</p>
+                              <p className="text-white font-semibold text-sm">{appt.patient.name}</p>
                               <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${cfg.cls}`}>
                                 {cfg.label}
                               </span>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { signOut } from "next-auth/react";
+import { authClient } from "@/lib/auth/client";
 import {
   Shield, LogOut, Globe, Database, Activity, Server, Users,
   CheckCircle2, AlertTriangle,
@@ -54,8 +54,8 @@ export default function AdminSettingsPage() {
         <div>
           <InfoRow label="Database" value="PostgreSQL · Neon" status="ok" />
           <InfoRow label="Real-time Server" value="Socket.IO · Port 3001" status="ok" />
-          <InfoRow label="AI Provider" value="Mock (set ANTHROPIC_API_KEY for Claude)" status="warn" />
-          <InfoRow label="Email Provider" value="OTP Auth · set RESEND_API_KEY" status="warn" />
+          <InfoRow label="AI Provider" value="Mock (set GEMINI_API_KEY for Gemini)" status="warn" />
+          <InfoRow label="Email Provider" value="OTP Auth · requires RESEND_API_KEY" status="warn" />
           <InfoRow label="Total Appointments" value={String(totalAppointments)} />
           <InfoRow label="Active Users" value={String(activeUsers)} />
         </div>
@@ -98,8 +98,8 @@ export default function AdminSettingsPage() {
           {[
             { key: "DATABASE_URL", desc: "PostgreSQL connection (Neon)", required: true },
             { key: "NEXTAUTH_SECRET", desc: "Auth.js session secret", required: true },
-            { key: "ANTHROPIC_API_KEY", desc: "Claude AI for wait prediction", required: false },
-            { key: "RESEND_API_KEY", desc: "Email OTP delivery", required: false },
+            { key: "GEMINI_API_KEY", desc: "Google Gemini for triage and wait prediction", required: false },
+            { key: "RESEND_API_KEY", desc: "Email OTP delivery", required: true },
             { key: "SOCKET_SERVER_URL", desc: "Socket.IO server endpoint", required: false },
           ].map(({ key, desc, required }) => (
             <div key={key} className="flex items-center justify-between p-3 bg-slate-700/20 rounded-xl">
@@ -129,7 +129,7 @@ export default function AdminSettingsPage() {
           <div className="flex items-center gap-3">
             <p className="text-slate-400 text-sm flex-1">Confirm sign out?</p>
             <button onClick={() => setConfirmSignOut(false)} className="text-slate-400 text-sm hover:text-white px-3 py-1.5 rounded-lg">Cancel</button>
-            <button onClick={() => signOut({ callbackUrl: "/login" })} className="bg-red-500 hover:bg-red-400 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-all">
+            <button onClick={() => authClient.signOut()} className="bg-red-500 hover:bg-red-400 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-all">
               Sign Out
             </button>
           </div>

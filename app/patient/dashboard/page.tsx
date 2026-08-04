@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import {
@@ -27,9 +27,9 @@ const statusColors: Record<string, string> = {
 };
 
 export default async function PatientDashboard() {
-  const session = await auth();
+  const session = await getSessionUser();
   const patient = await prisma.patient.findUnique({
-    where: { userId: session!.user.id },
+    where: { userId: session!.id },
     include: {
       appointments: {
         where: {
@@ -40,7 +40,7 @@ export default async function PatientDashboard() {
         take: 5,
         include: {
           doctor: {
-            include: { user: { select: { name: true } }, department: true },
+            include: { department: true },
           },
           department: true,
           queueEntry: true,
@@ -75,7 +75,7 @@ export default async function PatientDashboard() {
           <h1 className="text-2xl font-bold text-white">
             Good {new Date().getHours() < 12 ? "Morning" : new Date().getHours() < 18 ? "Afternoon" : "Evening"},{" "}
             <span className="text-sky-400">
-              {session?.user.name?.split(" ")[0]}
+              {session?.name?.split(" ")[0]}
             </span>{" "}
             👋
           </h1>
@@ -103,7 +103,7 @@ export default async function PatientDashboard() {
               You&apos;re in consultation now!
             </p>
             <p className="text-emerald-400/70 text-xs">
-              With {activeAppointment.doctor.user.name} ·{" "}
+              With {activeAppointment.doctor.name} ·{" "}
               {activeAppointment.department.name}
             </p>
           </div>
@@ -244,7 +244,7 @@ export default async function PatientDashboard() {
                     </div>
                     <div>
                       <p className="text-white font-semibold text-sm">
-                        {appt.doctor.user.name}
+                        {appt.doctor.name}
                       </p>
                       <p className="text-slate-400 text-xs">
                         {appt.department.name} ·{" "}

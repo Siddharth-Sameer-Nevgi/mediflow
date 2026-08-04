@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth/session";
 import { getQueueByDoctor } from "@/features/queue/queue.repository";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ doctorId: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const session = await getSessionUser();
+  if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
