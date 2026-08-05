@@ -133,6 +133,11 @@ model Appointment {
   departmentId    String
   tokenNumber     Int
   scheduledAt     DateTime
+  /// Calendar date of `scheduledAt` in the hospital's time zone, as `YYYY-MM-DD`.
+  /// Exists purely to scope the token-number uniqueness constraint to one day.
+  /// Stored as text, not `date`, because the driver's Date <-> `date` conversion
+  /// depends on ambient time zones — see lib/date.ts for the measurements.
+  scheduledDate   String            @db.VarChar(10)
   status          AppointmentStatus @default(BOOKED)
   appointmentType AppointmentType   @default(FIRST_CONSULTATION)
   notes           String?
@@ -151,6 +156,10 @@ model Appointment {
   queueEntry QueueEntry?
   consultLog ConsultationLog?
 
+  /// Two concurrent bookings cannot issue the same token for the same doctor on
+  /// the same day, no matter what the application logic does. This is also the
+  /// index the token allocator reads (MAX(tokenNumber) by doctor + day).
+  @@unique([doctorId, scheduledDate, tokenNumber])
   @@index([patientId])
   @@index([doctorId])
   @@index([scheduledAt])

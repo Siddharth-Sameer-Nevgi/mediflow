@@ -223,7 +223,7 @@ A `GET /health` endpoint on the socket server reports the live connection count.
 [features/ai/ai.service.ts](features/ai/ai.service.ts) selects a provider at module load: `GeminiProvider` when `GEMINI_API_KEY` is set, otherwise `mockAIProvider`. Both implement the same `AIService` interface, so every consumer works offline and without an API key.
 
 [features/ai/gemini.provider.ts](features/ai/gemini.provider.ts) calls the Gemini REST endpoint with plain `fetch` — no SDK dependency — and requests `responseMimeType: "application/json"` so the model returns bare JSON with no markdown fences to strip. It degrades rather than fails:
-
+ 
 - Every call has an 8s timeout, because appointment booking awaits the prediction.
 - Any error, timeout, or unparseable response falls back to the mock heuristics; the AI is never a hard dependency for booking.
 - Triage output is validated against the known department and urgency enums. Anything outside them is discarded and the heuristic result is used instead, so the model can't route a patient to a department that doesn't exist.
