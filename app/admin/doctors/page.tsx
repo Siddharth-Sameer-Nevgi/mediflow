@@ -19,11 +19,13 @@ import { cn } from "@/lib/utils";
 
 interface Doctor {
   id: string;
-  name: string;
-  email: string;
   specialization: string;
   consultationFee: number;
   isAvailable: boolean;
+  user: {
+    name: string;
+    email: string;
+  };
   department: {
     id: string;
     name: string;
@@ -182,7 +184,7 @@ export default function DoctorsPage() {
     if (!q) return doctors;
     return doctors.filter(
       (d) =>
-        d.name.toLowerCase().includes(q) ||
+        d.user.name.toLowerCase().includes(q) ||
         d.specialization.toLowerCase().includes(q) ||
         d.department?.name.toLowerCase().includes(q)
     );
@@ -261,8 +263,8 @@ export default function DoctorsPage() {
           {/* Rows */}
           <div className="divide-y divide-slate-700/30">
             {filtered.map((doctor) => {
-              const initials = getInitials(doctor.name);
-              const color = avatarColor(doctor.name);
+              const initials = getInitials(doctor.user.name);
+              const color = avatarColor(doctor.user.name);
 
               return (
                 <div
@@ -281,10 +283,10 @@ export default function DoctorsPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-white text-sm font-semibold truncate">
-                        {doctor.name}
+                        {doctor.user.name}
                       </p>
                       <p className="text-slate-500 text-xs truncate">
-                        {doctor.email}
+                        {doctor.user.email}
                       </p>
                     </div>
                   </div>

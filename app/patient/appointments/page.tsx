@@ -18,7 +18,7 @@ interface Appointment {
   appointmentType: string;
   notes?: string;
   doctor: {
-    name: string;
+    user: { name: string };
     department: { name: string } | null;
   };
   department: { name: string } | null;
@@ -168,7 +168,7 @@ export default function AppointmentsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
                           <p className="text-white font-semibold text-sm">
-                            Dr. {appt.doctor.name}
+                            Dr. {appt.doctor.user.name}
                           </p>
                           <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.cls}`}>
                             <StatusIcon className="w-3 h-3" />

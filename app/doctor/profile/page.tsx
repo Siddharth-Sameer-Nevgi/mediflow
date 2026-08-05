@@ -1,4 +1,4 @@
-import { getSessionUser } from "@/lib/auth/session";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import {
@@ -29,12 +29,13 @@ function getInitials(name: string): string {
 }
 
 export default async function DoctorProfilePage() {
-  const session = await getSessionUser();
-  if (!session?.id) redirect("/login");
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
 
   const doctor = await prisma.doctor.findUnique({
-    where: { userId: session.id },
+    where: { userId: session.user.id },
     include: {
+      user: true,
       department: true,
       appointments: { where: { deletedAt: null } },
     },
@@ -42,14 +43,7 @@ export default async function DoctorProfilePage() {
 
   if (!doctor) redirect("/doctor/dashboard");
 
-  const { department, appointments } = doctor;
-  // Identity now lives on the Doctor row itself, mirrored from Neon Auth.
-  const user = {
-    name: doctor.name,
-    email: doctor.email,
-    phone: doctor.phone,
-    createdAt: doctor.createdAt,
-  };
+  const { user, department, appointments } = doctor;
 
   const todaysPatients = appointments.filter((a) =>
     isToday(new Date(a.scheduledAt))

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { getSessionUser } from "@/lib/auth/session";
-import { auth } from "@/lib/auth/server";
-import { setUserRole } from "@/lib/auth/admin";
+import { auth } from "@/lib/auth";
 
 
 export async function GET(req: NextRequest) {
@@ -16,6 +13,7 @@ export async function GET(req: NextRequest) {
         ...(departmentId && { departmentId }),
       },
       include: {
+        user: { select: { name: true, email: true, phone: true } },
         department: true,
         _count: {
           select: {
@@ -28,7 +26,7 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: { user: { name: "asc" } },
     });
     return NextResponse.json({ doctors });
   } catch {
@@ -37,8 +35,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionUser();
-  if (!session || session.role !== "ADMIN") {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -57,49 +55,40 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const existing = await prisma.doctor.findFirst({ where: { email } });
+    // Check email not taken
+    const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
 
-    // Identity is created in Neon Auth first — it owns users and roles. The
-    // password is never used: doctors sign in with an emailed OTP.
-    const { data: created, error: authError } = await auth.admin.createUser({
-      email,
-      name,
-      password: randomBytes(24).toString("base64url"),
-    });
-
-    if (authError || !created?.user) {
-      console.error("[POST /api/doctors] Neon Auth createUser failed.", authError);
-      return NextResponse.json(
-        { error: authError?.message ?? "Could not create the doctor's account." },
-        { status: 502 }
-      );
-    }
-
-    await setUserRole(created.user.id, "DOCTOR");
-
-    const doctor = await prisma.doctor.create({
-      data: {
-        userId: created.user.id,
-        name,
-        email,
-        phone: phone ?? null,
-        departmentId,
-        specialization,
-        licenseNumber,
-        avgConsultMins: avgConsultMins ?? 15,
-        isAvailable: true,
-      },
-      include: {
-        department: true,
-      },
+    // Create user + doctor in transaction
+    const doctor = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name, email, phone: phone ?? null,
+          role: "DOCTOR",
+          emailVerified: true,
+        },
+      });
+      return tx.doctor.create({
+        data: {
+          userId: user.id,
+          departmentId,
+          specialization,
+          licenseNumber,
+          avgConsultMins: avgConsultMins ?? 15,
+          isAvailable: true,
+        },
+        include: {
+          user: { select: { name: true, email: true } },
+          department: true,
+        },
+      });
     });
 
     await prisma.auditLog.create({
       data: {
-        userId: session.id,
+        userId: session.user.id,
         action: "CREATE_DOCTOR",
         entity: "Doctor",
         entityId: doctor.id,

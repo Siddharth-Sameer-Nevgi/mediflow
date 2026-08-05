@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/session";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   // ── Auth & role guard ─────────────────────────────────────────────────────
-  const session = await getSessionUser();
-  if (!session || session.role !== "ADMIN") {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     // ── Audit log ─────────────────────────────────────────────────────────
     await prisma.auditLog.create({
       data: {
-        userId: session.id,
+        userId: session.user.id,
         action: "EMERGENCY_QUEUE_OVERRIDE",
         entity: "QueueEntry",
         entityId: entry.id,

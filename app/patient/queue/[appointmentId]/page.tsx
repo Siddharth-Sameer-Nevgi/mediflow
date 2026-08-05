@@ -3,7 +3,7 @@
 import { useEffect, useState, use } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { connectSocket, disconnectSocket } from "@/lib/socket";
-import { authClient } from "@/lib/auth/client";
+import { useSession } from "next-auth/react";
 import { Wifi, WifiOff, Coffee, Bell, Activity, CheckCircle2, Clock, Users } from "lucide-react";
 import { formatWaitTime, formatConfidence } from "@/lib/utils";
 
@@ -41,7 +41,7 @@ function WaitRing({ position, total }: { position: number; total: number }) {
 
 export default function QueuePage({ params }: { params: Promise<{ appointmentId: string }> }) {
   const { appointmentId } = use(params);
-  const { data: session } = authClient.useSession();
+  const { data: session } = useSession();
   const [connected, setConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 

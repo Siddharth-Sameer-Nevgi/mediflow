@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/session";
+import { auth } from "@/lib/auth";
 import { callNextPatient } from "@/features/queue/queue.service";
 import { callNextSchema } from "@/lib/validations";
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionUser();
-  if (!session || session.role !== "DOCTOR") {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "DOCTOR") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

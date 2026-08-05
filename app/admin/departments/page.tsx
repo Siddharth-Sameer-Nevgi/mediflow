@@ -12,6 +12,7 @@ import {
   Loader2,
   Stethoscope,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 
 interface Department {
@@ -159,17 +160,8 @@ function CreateDepartmentModal({
 }
 
 export default function DepartmentsPage() {
+  const { data: session } = useSession();
   const [modalOpen, setModalOpen] = useState(false);
-
-  // Neon Auth sessions do not carry hospitalId, so read it from the profile.
-  const { data: profile } = useQuery<{ user: { hospitalId: string | null } }>({
-    queryKey: ["user-profile"],
-    queryFn: async () => {
-      const res = await fetch("/api/user/profile");
-      if (!res.ok) return { user: { hospitalId: null } };
-      return res.json();
-    },
-  });
 
   const { data, isLoading } = useQuery<{ departments: Department[] }>({
     queryKey: ["admin-departments"],
@@ -181,7 +173,7 @@ export default function DepartmentsPage() {
   });
 
   const departments = data?.departments ?? [];
-  const hospitalId = profile?.user?.hospitalId ?? "";
+  const hospitalId = session?.user?.hospitalId ?? "";
 
   return (
     <div className="space-y-6">

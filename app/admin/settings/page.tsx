@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { authClient } from "@/lib/auth/client";
+import { signOut } from "next-auth/react";
 import {
   Shield, LogOut, Globe, Database, Activity, Server, Users,
   CheckCircle2, AlertTriangle,
@@ -129,7 +129,7 @@ export default function AdminSettingsPage() {
           <div className="flex items-center gap-3">
             <p className="text-slate-400 text-sm flex-1">Confirm sign out?</p>
             <button onClick={() => setConfirmSignOut(false)} className="text-slate-400 text-sm hover:text-white px-3 py-1.5 rounded-lg">Cancel</button>
-            <button onClick={() => authClient.signOut()} className="bg-red-500 hover:bg-red-400 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-all">
+            <button onClick={() => signOut({ callbackUrl: "/login" })} className="bg-red-500 hover:bg-red-400 text-white text-sm px-4 py-1.5 rounded-lg font-medium transition-all">
               Sign Out
             </button>
           </div>

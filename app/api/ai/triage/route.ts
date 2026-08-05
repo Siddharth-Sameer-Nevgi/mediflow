@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/session";
+import { auth } from "@/lib/auth";
 import { aiService } from "@/features/ai/ai.service";
 import { triageSchema } from "@/lib/validations";
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionUser();
-  if (!session) {
+  const session = await auth();
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

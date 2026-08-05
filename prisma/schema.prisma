@@ -7,14 +7,35 @@ datasource db {
 }
 
 
-// Identity lives in Neon Auth (`neon_auth.user`), not here. That table is
-// managed by Neon and must never be touched by `prisma db push`, so it is not
-// modelled in this schema and no foreign key points at it.
-//
-// Every profile below carries `userId` — the `neon_auth.user.id` uuid — plus a
-// denormalised copy of the name/email so queue lists and dashboards can render
-// without a cross-schema join. `lib/auth/profile.ts` keeps the copies in sync
-// on each sign-in. Roles live on `neon_auth.user.role`.
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  phone         String?
+  role          Role      @default(PATIENT)
+  emailVerified Boolean   @default(false)
+  // bcrypt hash — never the plaintext password. Nullable so accounts can exist
+  // before a password is set (e.g. admin-provisioned doctors).
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  patient       Patient?
+  doctor        Doctor?
+  admin         Admin?
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
 
 model Hospital {
   id        String    @id @default(cuid())
@@ -52,10 +73,7 @@ model Department {
 
 model Doctor {
   id             String  @id @default(cuid())
-  userId         String  @unique // neon_auth.user.id
-  name           String
-  email          String
-  phone          String?
+  userId         String  @unique
   departmentId   String
   specialization String
   licenseNumber  String  @unique
@@ -64,20 +82,17 @@ model Doctor {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  user             User              @relation(fields: [userId], references: [id])
   department       Department        @relation(fields: [departmentId], references: [id])
   appointments     Appointment[]
   consultationLogs ConsultationLog[]
 
   @@index([departmentId])
-  @@index([email])
 }
 
 model Patient {
   id               String    @id @default(cuid())
-  userId           String    @unique // neon_auth.user.id
-  name             String
-  email            String
-  phone            String?
+  userId           String    @unique
   dateOfBirth      DateTime?
   bloodGroup       String?
   allergies        String[]
@@ -86,11 +101,11 @@ model Patient {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  user        User         @relation(fields: [userId], references: [id])
   appointments Appointment[]
   familyGroup FamilyGroup? @relation(fields: [familyGroupId], references: [id])
 
   @@index([familyGroupId])
-  @@index([email])
 }
 
 model FamilyGroup {
@@ -102,17 +117,13 @@ model FamilyGroup {
 
 model Admin {
   id         String   @id @default(cuid())
-  userId     String   @unique // neon_auth.user.id
-  name       String
-  email      String
-  phone      String?
+  userId     String   @unique
   hospitalId String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  user     User     @relation(fields: [userId], references: [id])
   hospital Hospital @relation(fields: [hospitalId], references: [id])
-
-  @@index([email])
 }
 
 model Appointment {
@@ -213,13 +224,15 @@ model WaitTimeHistory {
 
 model Notification {
   id        String           @id @default(cuid())
-  userId    String           // neon_auth.user.id
+  userId    String
   type      NotificationType
   title     String
   message   String
   isRead    Boolean          @default(false)
   metadata  Json?
   createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId, isRead])
 }
@@ -234,13 +247,15 @@ enum NotificationType {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  userId    String   // neon_auth.user.id
+  userId    String
   action    String
   entity    String
   entityId  String
   metadata  Json?
   ipAddress String?
   createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([entity, entityId])

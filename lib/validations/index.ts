@@ -1,25 +1,17 @@
 import { z } from "zod";
 
 // Auth schemas
-// No `role` field: Neon Auth owns roles, and letting a client pick its own
-// would be privilege escalation. Self-registration always yields PATIENT.
 export const registerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  role: z.enum(["PATIENT", "DOCTOR", "ADMIN"]),
 });
 
 export const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
-});
-
-export const verifyOtpSchema = z.object({
-  email: z.string().email(),
-  otp: z.string().length(6, "OTP must be 6 digits"),
-});
-
-export const resendOtpSchema = z.object({
-  email: z.string().email(),
+  password: z.string().min(1, "Password is required"),
 });
 
 // Appointment schemas
@@ -105,7 +97,6 @@ export const endConsultationSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type BookAppointmentInput = z.infer<typeof bookAppointmentSchema>;
 export type UpdateAppointmentStatusInput = z.infer<
   typeof updateAppointmentStatusSchema

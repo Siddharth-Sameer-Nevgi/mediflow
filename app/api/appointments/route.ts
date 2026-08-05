@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/auth/session";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { bookAppointmentSchema } from "@/lib/validations";
 import { aiService } from "@/features/ai/ai.service";
 import { AppointmentType } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
-  const session = await getSessionUser();
-  if (!session) {
+  const session = await auth();
+  if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -19,9 +19,9 @@ export async function GET(req: NextRequest) {
   try {
     let patientId: string | undefined;
 
-    if (session.role === "PATIENT") {
+    if (session.user.role === "PATIENT") {
       const patient = await prisma.patient.findUnique({
-        where: { userId: session.id },
+        where: { userId: session.user.id },
       });
       if (!patient) return NextResponse.json({ appointments: [], total: 0 });
       patientId = patient.id;
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { scheduledAt: "desc" },
         include: {
-          doctor: { include: { department: true } },
+          doctor: { include: { user: { select: { name: true } }, department: true } },
           department: true,
           queueEntry: true,
         },
@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionUser();
-  if (!session || session.role !== "PATIENT") {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "PATIENT") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       parsed.data;
 
     const patient = await prisma.patient.findUnique({
-      where: { userId: session.id },
+      where: { userId: session.user.id },
     });
     if (!patient) {
       return NextResponse.json({ error: "Patient profile not found" }, { status: 404 });
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
           status: "BOOKED",
         },
         include: {
-          doctor: { include: { department: true } },
+          doctor: { include: { user: { select: { name: true } }, department: true } },
           department: true,
         },
       });
@@ -151,10 +151,10 @@ export async function POST(req: NextRequest) {
       // Notification for patient
       await tx.notification.create({
         data: {
-          userId: session.id,
+          userId: session.user.id,
           type: "APPOINTMENT_REMINDER",
           title: "Appointment Booked!",
-          message: `Token #${tokenNumber} — ${appt.doctor.name} (${appt.department.name}). Est. wait: ${waitPrediction.estimatedWaitMins} mins.`,
+          message: `Token #${tokenNumber} — ${appt.doctor.user.name} (${appt.department.name}). Est. wait: ${waitPrediction.estimatedWaitMins} mins.`,
           metadata: { appointmentId: appt.id, tokenNumber },
         },
       });
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
       // Audit log
       await tx.auditLog.create({
         data: {
-          userId: session.id,
+          userId: session.user.id,
           action: "BOOK_APPOINTMENT",
           entity: "Appointment",
           entityId: appt.id,

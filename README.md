@@ -11,7 +11,7 @@ Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 ## Features
 
 **Patients**
-- Register and log in with an email one-time password (OTP) — no passwords stored
+- Register and log in with an email and password (bcrypt-hashed at rest)
 - AI symptom triage that suggests the right department before booking
 - Book appointments with an AI-estimated wait time and confidence score
 - Live queue page (`/patient/queue/[appointmentId]`) with a token number, position, and push updates when the queue moves
@@ -43,13 +43,13 @@ Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 | Framework | Next.js 16.2 (App Router), React 19 |
 | Language | TypeScript (strict) |
 | Database | PostgreSQL via Prisma 7 (`@prisma/adapter-pg`) — built against Neon |
-| Auth | **Neon Auth** (`@neondatabase/auth`, Managed Better Auth) — email OTP, sessions and roles in the Neon-managed `neon_auth` schema |
+| Auth | Auth.js v5 (`next-auth@5` beta) — Credentials provider, email + bcrypt password, JWT sessions, Prisma adapter |
 | Real-time | Standalone Express + Socket.IO server ([server/socket-server.ts](server/socket-server.ts)) |
 | Server state | TanStack Query v5 |
 | Client state | Zustand |
 | UI | Tailwind CSS v4, Radix UI primitives, `lucide-react`, `recharts`, `sonner` |
 | Forms | React Hook Form + Zod v4 |
-| Email | Resend (falls back to console logging in dev) |
+| Email | Resend (installed but unused — password auth needs no mail) |
 | AI | Google Gemini via the REST API (falls back to a deterministic mock provider) |
 
 ---
@@ -60,7 +60,7 @@ Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 app/
   api/                    Route handlers (auth, appointments, queue, AI, admin, notifications)
   patient/ doctor/ admin/ Role-scoped page trees, each with its own layout
-  login/ register/        OTP auth flow
+  login/ register/        Email + password auth
   page.tsx                Marketing landing page
 components/
   shared/                 Sidebar, Topbar, NotificationBell, EditProfileModal
@@ -106,9 +106,10 @@ cp .env.example .env
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `NEON_AUTH_BASE_URL` | ✅ | From the Neon console — e.g. `https://ep-xxx.neonauth.<region>.aws.neon.tech/neondb/auth` |
-| `NEON_AUTH_COOKIE_SECRET` | ✅ | 32+ chars; `openssl rand -base64 32` |
-| `RESEND_API_KEY` | — | No longer used for auth; Neon Auth sends OTP mail via its shared sender |
+| `AUTH_SECRET` | ✅ | Random 32+ char secret for Auth.js; `openssl rand -base64 32` |
+| `AUTH_URL` | ✅ | `http://localhost:3000` in dev |
+| `SEED_PASSWORD` | — | Password given to every seeded test account (default `Test@1234`) |
+| `RESEND_API_KEY` | — | Not used by authentication — password sign-in needs no email |
 | `EMAIL_FROM` | — | Unused by authentication |
 | `GEMINI_API_KEY` | — | Omit and the mock AI provider is used. Get one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | `GEMINI_MODEL` | — | Model override; defaults to `gemini-2.5-flash` |
@@ -124,7 +125,7 @@ cp .env.example .env
 ```bash
 npm run db:generate   # generate the Prisma client
 npm run db:push       # push schema.prisma to the database
-npm run db:seed       # seed a hospital, departments, doctors, a patient, an admin
+npm run db:seed       # hospital, departments, 4 doctors, 10 patients, 2 admins
 ```
 
 ### 4. Run
@@ -144,18 +145,23 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### 5. Log in
 
-Sign-in is email OTP only, delivered by Neon Auth. Enter your email on `/login`, then enter the 6-digit code from your inbox. **There is no development bypass.**
+Enter an email and password on `/login`. No inbox is involved, so the seeded accounts work immediately.
 
-The seed creates these demo accounts in `neon_auth.user`:
+The seed creates **18 test accounts, all sharing one password**:
 
-| Role | Email |
-| --- | --- |
-| Patient | `patient@mediflow.ai` |
-| Doctor | `dr.arjun.sharma@mediflow.ai` |
-| Doctor | `dr.priya.nair@mediflow.ai` |
-| Admin | `admin@mediflow.ai` |
+| Role | Emails | Count |
+| --- | --- | --- |
+| Patient | `patient@mediflow.ai`, `patient1@` … `patient9@mediflow.ai` | 10 |
+| Doctor | `dr.arjun.sharma@`, `dr.priya.nair@`, `dr.rahul.mehta@`, `dr.sana.khan@mediflow.ai` | 4 |
+| Admin | `admin@mediflow.ai`, `admin2@mediflow.ai` | 2 |
 
-⚠️ **`@mediflow.ai` is not a real mailbox.** To sign in as a demo user, edit the emails in [prisma/seed.ts](prisma/seed.ts) to addresses you control and re-run `npm run db:seed`. Neon Auth's shared email sender delivers the code to whatever address the account uses.
+```
+Password for every seeded account:  Test@1234
+```
+
+Override it with `SEED_PASSWORD="your-password" npm run db:seed`.
+
+> ⚠️ These are **test fixtures with a shared, publicly-known password**. Never run this seed against a production database.
 
 ---
 
@@ -177,38 +183,26 @@ The seed creates these demo accounts in `neon_auth.user`:
 
 ## Authentication
 
-Passwordless email OTP, handled entirely by **Neon Auth**. The app no longer generates, stores, hashes, or expires codes — Neon does, and its shared email sender delivers them.
-
-**Identity lives outside Prisma.** Users, sessions, and roles are rows in the Neon-managed `neon_auth` schema in the same database. That schema is not modelled in `schema.prisma` and must never be touched by `prisma db push`.
-
-| Concern | Owner |
-| --- | --- |
-| User record, email, display name | `neon_auth.user` |
-| Sessions and cookies | `neon_auth.session`, signed with `NEON_AUTH_COOKIE_SECRET` |
-| Role (`PATIENT` / `DOCTOR` / `ADMIN`) | `neon_auth.user.role` |
-| Clinical profile, phone, appointments | Prisma `Patient` / `Doctor` / `Admin` |
-
-Because Prisma cannot join across into `neon_auth`, each profile row keeps a denormalised `name` / `email`, re-synced on every sign-in by [lib/auth/profile.ts](lib/auth/profile.ts).
+Email + password via **Auth.js v5** (`next-auth@5`), using a Credentials provider with JWT sessions. There is no email round-trip, so the app needs no mail provider to sign users in.
 
 **Flow**
 
-1. `authClient.emailOtp.sendVerificationOtp({ email, type: "sign-in" })` — Neon emails the code.
-2. `authClient.signIn.emailOtp({ email, otp })` — Neon verifies and sets the session cookie.
-3. `POST /api/user/bootstrap` — reconciles the Prisma profile and returns the role's landing route.
+1. `POST /api/auth/register` validates the payload, hashes the password with bcrypt (cost 10), and stores only the hash in `User.passwordHash`. The plaintext is never persisted or logged.
+2. The register page then calls `signIn("credentials", …)` with the same details, so a new user lands on their dashboard without a second step.
+3. `/login` posts straight to the Credentials provider in [lib/auth.ts](lib/auth.ts), which looks the user up by email and compares with `bcrypt.compare`.
 
-**Key files**
+**Rules enforced in [lib/auth.ts](lib/auth.ts)**
 
-| File | Role |
+| Check | Behaviour |
 | --- | --- |
-| [lib/auth/server.ts](lib/auth/server.ts) | `createNeonAuth` instance for server components, route handlers, proxy |
-| [lib/auth/client.ts](lib/auth/client.ts) | Browser client; `authClient.useSession()` |
-| [lib/auth/session.ts](lib/auth/session.ts) | `getSessionUser()` — the authoritative check in every route handler |
-| [lib/auth/roles.ts](lib/auth/roles.ts) | Client-safe role helpers (no Prisma import, so it's bundle-safe) |
-| [app/api/auth/[...path]/route.ts](app/api/auth/[...path]/route.ts) | Proxies `/api/auth/*` to Neon Auth |
+| No `passwordHash` on the account | Sign-in refused — covers accounts provisioned by an admin that have no password yet |
+| `deletedAt` set | Sign-in refused (soft-deleted users cannot authenticate) |
+| Wrong password | Generic failure; the UI never reveals whether the email exists |
+| Password length | Minimum 8 characters, enforced by `registerSchema` in [lib/validations/index.ts](lib/validations/index.ts) |
 
-**Roles are not self-assignable.** Registration always creates a `PATIENT`; `registerSchema` has no `role` field and `/api/user/bootstrap` ignores any client-supplied role. Doctor and admin accounts are provisioned by the seed or by an admin through `POST /api/doctors`.
+Role is re-read from the database on every JWT refresh, so a role change takes effect without re-login. `proxy.ts` gates `/patient`, `/doctor`, and `/admin` optimistically; each route handler re-checks `session.user.role` as the authoritative test.
 
-> `normalizeRole()` defaults any unrecognised value to `PATIENT` — `neon_auth.user.role` is free text, so it is never trusted verbatim.
+> **Not production-ready as-is.** There is no rate limiting on sign-in attempts, no password-reset flow, and no email verification — `emailVerified` is set `false` on self-registration and `true` only by the seed. Add those before exposing this to real users.
 
 ## How the real-time layer works
 
@@ -265,7 +259,7 @@ Core tables in [prisma/schema.prisma](prisma/schema.prisma):
 
 | Route | Methods | Role |
 | --- | --- | --- |
-| `/api/auth/register`, `/api/auth/resend-otp` | POST | public |
+| `/api/auth/register` | POST | public |
 | `/api/auth/[...nextauth]` | GET/POST | public |
 | `/api/appointments` | GET, POST | patient |
 | `/api/appointments/[id]/status` | PATCH, DELETE | authenticated |
@@ -289,7 +283,7 @@ Handlers validate their bodies with Zod schemas from [lib/validations/index.ts](
 - **This is Next.js 16.** Middleware is `proxy.ts` at the project root, not `middleware.ts`. Check `node_modules/next/dist/docs/` before assuming an API matches an older version — see [AGENTS.md](AGENTS.md).
 - Role checks in `proxy.ts` are an optimistic redirect layer; the authoritative check is the `session.user.role` guard inside each route handler.
 - The socket server's `/emit` endpoint is protected only by a shared secret — keep it on a private network or behind an authenticated gateway in production.
-- The auth endpoints still allow **user enumeration**: `/api/auth/register` returns `409` for a known email and `/api/auth/resend-otp` returns `404` for an unknown one. Returning a generic response for both would close this, at the cost of a less helpful UX.
-- OTP rate limiting is per-account (the 60s cooldown), not per-IP. `UPSTASH_REDIS_REST_URL` / `_TOKEN` are reserved in `.env.example` for IP-level limiting, but no such code exists yet.
+- `/api/auth/register` allows **user enumeration**: it returns `409` for an already-registered email. Sign-in itself is safe — it returns a generic failure either way.
+- There is no rate limiting on sign-in attempts. `UPSTASH_REDIS_REST_URL` / `_TOKEN` are reserved in `.env.example` for that, but no such code exists yet.
 - Registering as `DOCTOR` or `ADMIN` creates the `User` but no matching `Doctor`/`Admin` row, so those accounts land without a profile. Only `PATIENT` self-registration is complete — see [app/api/auth/register/route.ts](app/api/auth/register/route.ts).
 - There is no test suite in the repo yet.

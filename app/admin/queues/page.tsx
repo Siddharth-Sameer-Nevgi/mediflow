@@ -10,9 +10,9 @@ import {
 
 interface Doctor {
   id: string;
-  name: string;
   specialization: string;
   isAvailable: boolean;
+  user: { name: string };
   department: { name: string };
 }
 
@@ -25,7 +25,7 @@ interface QueueEntry {
     tokenNumber: number;
     status: string;
     isEmergency: boolean;
-    patient: { name: string; email: string };
+    patient: { user: { name: string } };
   };
 }
 
@@ -55,7 +55,7 @@ function DoctorQueueCard({ doctor }: { doctor: Doctor }) {
             <Stethoscope className="w-4 h-4 text-emerald-400" />
           </div>
           <div>
-            <p className="text-white font-semibold text-sm">Dr. {doctor.name}</p>
+            <p className="text-white font-semibold text-sm">Dr. {doctor.user.name}</p>
             <p className="text-slate-400 text-xs">{doctor.specialization} · {doctor.department.name}</p>
           </div>
         </div>
@@ -96,7 +96,7 @@ function DoctorQueueCard({ doctor }: { doctor: Doctor }) {
                   <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
                 )}
                 <span className="text-slate-300 text-xs truncate max-w-[120px]">
-                  {entry.appointment.patient.name}
+                  {entry.appointment.patient.user.name}
                 </span>
               </div>
               <div className="flex items-center gap-2">

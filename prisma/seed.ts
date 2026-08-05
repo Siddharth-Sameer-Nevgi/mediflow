@@ -1,7 +1,8 @@
 import "dotenv/config";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Role } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import bcrypt from "bcryptjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -15,30 +16,34 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg(pool) as any,
 });
 
-type SeedRole = "PATIENT" | "DOCTOR" | "ADMIN";
-
 /**
- * Create (or fetch) a Neon Auth user.
+ * Shared password for every seeded account, so a whole hospital's worth of
+ * users can be exercised without needing real mailboxes.
  *
- * The seed runs under ts-node, outside Next.js, so it cannot use the Neon Auth
- * SDK's server instance. `neon_auth.user` lives in this same database and the
- * emailOTP flow signs in any existing user by email, so seeding the row
- * directly is enough — the demo accounts sign in with an emailed code, no
- * password or credential row required.
+ * ⚠️ These are TEST fixtures. Never run this seed against production — every
+ * account it creates has the same publicly-known password.
  */
-async function upsertAuthUser(
-  prisma: PrismaClient,
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Test@1234";
+
+/** Hash once and reuse: bcrypt is deliberately slow, and this runs ~20 times. */
+let cachedHash: string | null = null;
+async function seedPasswordHash(): Promise<string> {
+  if (!cachedHash) cachedHash = await bcrypt.hash(SEED_PASSWORD, 10);
+  return cachedHash;
+}
+
+async function upsertUser(
   email: string,
   name: string,
-  role: SeedRole
-): Promise<string> {
-  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
-    INSERT INTO neon_auth."user" (id, name, email, "emailVerified", role, "createdAt", "updatedAt")
-    VALUES (gen_random_uuid(), ${name}, ${email}, true, ${role}, now(), now())
-    ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role
-    RETURNING id
-  `;
-  return rows[0].id;
+  role: Role,
+  phone?: string
+) {
+  const passwordHash = await seedPasswordHash();
+  return prisma.user.upsert({
+    where: { email },
+    update: { name, role, passwordHash, emailVerified: true },
+    create: { email, name, role, phone, passwordHash, emailVerified: true },
+  });
 }
 
 async function main() {
@@ -125,20 +130,13 @@ async function main() {
   ];
 
   for (const docData of doctorsData) {
-    const userId = await upsertAuthUser(
-      prisma,
-      docData.email,
-      docData.name,
-      "DOCTOR"
-    );
+    const user = await upsertUser(docData.email, docData.name, Role.DOCTOR);
 
     await prisma.doctor.upsert({
-      where: { userId },
-      update: { name: docData.name, email: docData.email },
+      where: { userId: user.id },
+      update: {},
       create: {
-        userId,
-        name: docData.name,
-        email: docData.email,
+        userId: user.id,
         departmentId: deptMap[docData.deptCode].id,
         specialization: docData.specialization,
         licenseNumber: docData.licenseNumber,
@@ -149,54 +147,72 @@ async function main() {
     console.log("✅ Doctor created:", docData.name);
   }
 
-  // Create a sample patient
-  const patientId = await upsertAuthUser(
-    prisma,
-    "patient@mediflow.ai",
-    "Raj Kumar",
-    "PATIENT"
-  );
+  // Create test patients — enough to exercise queues with real volume.
+  const patientsData = [
+    { email: "patient@mediflow.ai", name: "Raj Kumar", bloodGroup: "O+" },
+    { email: "patient1@mediflow.ai", name: "Ananya Iyer", bloodGroup: "A+" },
+    { email: "patient2@mediflow.ai", name: "Vikram Reddy", bloodGroup: "B+" },
+    { email: "patient3@mediflow.ai", name: "Meera Joshi", bloodGroup: "AB+" },
+    { email: "patient4@mediflow.ai", name: "Farhan Ali", bloodGroup: "O-" },
+    { email: "patient5@mediflow.ai", name: "Divya Menon", bloodGroup: "A-" },
+    { email: "patient6@mediflow.ai", name: "Karthik Rao", bloodGroup: "B-" },
+    { email: "patient7@mediflow.ai", name: "Sneha Kapoor", bloodGroup: "AB-" },
+    { email: "patient8@mediflow.ai", name: "Arjun Desai", bloodGroup: "O+" },
+    { email: "patient9@mediflow.ai", name: "Ritu Sharma", bloodGroup: "A+" },
+  ];
 
-  await prisma.patient.upsert({
-    where: { userId: patientId },
-    update: { name: "Raj Kumar", email: "patient@mediflow.ai" },
-    create: {
-      userId: patientId,
-      name: "Raj Kumar",
-      email: "patient@mediflow.ai",
-      bloodGroup: "O+",
-    },
-  });
-  console.log("✅ Sample patient created");
+  for (const pt of patientsData) {
+    const user = await upsertUser(pt.email, pt.name, Role.PATIENT);
+    await prisma.patient.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id, bloodGroup: pt.bloodGroup },
+    });
+  }
+  console.log(`✅ ${patientsData.length} test patients created`);
 
   // Create admin user
-  const adminId = await upsertAuthUser(
-    prisma,
+  const adminUser = await upsertUser(
     "admin@mediflow.ai",
     "Hospital Admin",
-    "ADMIN"
+    Role.ADMIN
   );
 
   await prisma.admin.upsert({
-    where: { userId: adminId },
-    update: { name: "Hospital Admin", email: "admin@mediflow.ai" },
+    where: { userId: adminUser.id },
+    update: {},
     create: {
-      userId: adminId,
-      name: "Hospital Admin",
-      email: "admin@mediflow.ai",
+      userId: adminUser.id,
       hospitalId: hospital.id,
     },
   });
   console.log("✅ Admin created");
 
+  // A second admin, so admin-to-admin scenarios can be tested.
+  const admin2 = await upsertUser(
+    "admin2@mediflow.ai",
+    "Ops Manager",
+    Role.ADMIN
+  );
+  await prisma.admin.upsert({
+    where: { userId: admin2.id },
+    update: {},
+    create: { userId: admin2.id, hospitalId: hospital.id },
+  });
+  console.log("✅ Second admin created");
+
+  const total = await prisma.user.count();
+
   console.log("\n🎉 Database seeded successfully!");
-  console.log("\n📧 Demo accounts (OTP sign-in — the code is emailed, so these addresses must be deliverable):");
-  console.log("  Patient: patient@mediflow.ai");
-  console.log("  Doctor: dr.arjun.sharma@mediflow.ai");
-  console.log("  Doctor: dr.priya.nair@mediflow.ai");
-  console.log("  Admin: admin@mediflow.ai");
-  console.log("\n  Note: These accounts are pre-verified, but sign-in still requires receiving");
-  console.log("  the emailed OTP. Change these to addresses you control before testing login.");
+  console.log(`\n🔑 All ${total} accounts share the password: ${SEED_PASSWORD}`);
+  console.log("   (override with SEED_PASSWORD=... npm run db:seed)");
+  console.log("\n📧 Sign in at /login with any of these:");
+  console.log("  Patients: patient@mediflow.ai, patient1@ … patient9@mediflow.ai");
+  console.log("  Doctors:  dr.arjun.sharma@mediflow.ai, dr.priya.nair@mediflow.ai,");
+  console.log("            dr.rahul.mehta@mediflow.ai, dr.sana.khan@mediflow.ai");
+  console.log("  Admins:   admin@mediflow.ai, admin2@mediflow.ai");
+  console.log("\n⚠️  These are TEST fixtures with a shared, publicly-known password.");
+  console.log("   Never run this seed against a production database.");
 }
 
 main()
