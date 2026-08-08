@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { FileText, Clock, Users, CheckCircle2, Timer } from "lucide-react";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Consultation History | MediFlow AI" };
+export const metadata: Metadata = { title: "Consultation History | MediFlow" };
 
 export default async function DoctorHistoryPage() {
   const session = await auth();

@@ -93,7 +93,7 @@ export function Sidebar() {
         </div>
         {!collapsed && (
           <div>
-            <span className="text-white font-bold text-base">MediFlow AI</span>
+            <span className="text-white font-bold text-base">MediFlow</span>
             <div className="text-slate-500 text-xs">{role.charAt(0) + role.slice(1).toLowerCase()} Portal</div>
           </div>
         )}
@@ -201,7 +201,7 @@ export function Sidebar() {
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center">
             <Activity className="w-4 h-4 text-white" />
           </div>
-          <span className="text-white font-bold text-sm">MediFlow AI</span>
+          <span className="text-white font-bold text-sm">MediFlow</span>
         </div>
         <div className="flex items-center gap-2">
           <NotificationBell />

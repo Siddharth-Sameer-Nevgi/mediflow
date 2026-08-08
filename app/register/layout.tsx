@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Register | MediFlow AI" };
+export const metadata: Metadata = { title: "Register | MediFlow" };
 
 export default function RegisterLayout({
   children,

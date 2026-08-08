@@ -1,7 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
+    // node16 rather than commonjs: it still emits CommonJS for these files, but
+    // it leaves `await import(...)` alone instead of downlevelling it to
+    // `require()`. server/socket-server.ts needs that to load @auth/core/jwt,
+    // which is ESM-only.
+    "module": "node16",
+    "moduleResolution": "node16",
     "lib": ["ES2020"],
     "outDir": "./dist-server",
     "rootDir": ".",
@@ -13,6 +18,13 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["server/**/*", "prisma/**/*", "lib/prisma.ts", "lib/utils.ts"],
+  "include": [
+    "server/**/*",
+    "scripts/**/*",
+    "prisma/**/*",
+    "lib/prisma.ts",
+    "lib/env.ts",
+    "lib/utils.ts"
+  ],
   "exclude": ["node_modules", ".next"]
 }

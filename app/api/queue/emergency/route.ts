@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
@@ -88,10 +89,8 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Emit Socket.IO event (non-fatal) ──────────────────────────────────
-    const socketUrl =
-      process.env.SOCKET_SERVER_URL ?? "http://localhost:3001";
-    const secret =
-      process.env.SOCKET_SERVER_SECRET ?? "mediflow-socket-dev-secret";
+    const socketUrl = env.SOCKET_SERVER_URL;
+    const secret = env.SOCKET_SERVER_SECRET;
 
     await fetch(`${socketUrl}/emit`, {
       method: "POST",

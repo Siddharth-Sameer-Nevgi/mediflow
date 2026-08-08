@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { FileText, Activity, Clock, TrendingUp, Calendar, CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "My Medical History | MediFlow AI" };
+export const metadata: Metadata = { title: "My Medical History | MediFlow" };
 
 const statusColors: Record<string, string> = {
   BOOKED: "bg-blue-500/20 text-blue-300 border-blue-500/30",

@@ -160,6 +160,19 @@ model Appointment {
   /// the same day, no matter what the application logic does. This is also the
   /// index the token allocator reads (MAX(tokenNumber) by doctor + day).
   @@unique([doctorId, scheduledDate, tokenNumber])
+
+  /// NOT THE ONLY UNIQUE CONSTRAINT ON THIS MODEL. There is a second one that
+  /// cannot be written here: `Appointment_patient_doctor_day_active_key`, a
+  /// *partial* unique index on (patientId, doctorId, scheduledDate) restricted
+  /// to live rows (`deletedAt IS NULL` and status in BOOKED / CHECKED_IN /
+  /// IN_CONSULTATION). It stops one patient double-booking the same doctor on
+  /// the same day while still allowing a re-book after a cancellation. Prisma
+  /// has no syntax for a WHERE clause on an index, so it lives in
+  /// prisma/migrations/20260808120000_prevent_duplicate_active_bookings.
+  ///
+  /// Anything classifying a P2002 on Appointment must distinguish the two by
+  /// name — see isBookingConflict() in app/api/appointments/route.ts.
+
   @@index([patientId])
   @@index([doctorId])
   @@index([scheduledAt])

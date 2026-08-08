@@ -23,7 +23,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center">
               <Activity className="w-4 h-4 text-white" />
             </div>
-            <span className="text-xl font-bold text-white">MediFlow AI</span>
+            <span className="text-xl font-bold text-white">MediFlow</span>
           </div>
 
           <div className="hidden md:flex items-center gap-8">
@@ -78,12 +78,12 @@ export default function LandingPage() {
           <div className="inline-flex items-center gap-2 bg-sky-500/10 border border-sky-500/30 rounded-full px-4 py-1.5 mb-8">
             <Brain className="w-4 h-4 text-sky-400" />
             <span className="text-sky-300 text-sm font-medium">
-              AI-Powered Healthcare Operations
+              AI-Assisted Hospital Operations
             </span>
           </div>
 
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold leading-tight mb-6">
-            <span className="text-white">The Future of</span>
+            <span className="text-white">Real-Time</span>
             <br />
             <span className="bg-gradient-to-r from-sky-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
               Hospital Queue Management
@@ -91,9 +91,9 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            MediFlow AI eliminates waiting room chaos with real-time queue
-            tracking, AI-powered wait predictions, and seamless patient flow
-            across every department.
+            Patients get a token number and watch their queue position move,
+            doctors call the next patient from a live dashboard, and admins see
+            every department&apos;s queue in one place.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -101,36 +101,20 @@ export default function LandingPage() {
               href="/register"
               className="inline-flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:shadow-2xl hover:shadow-sky-500/30 hover:-translate-y-0.5"
             >
-              Start for Free
+              Get Started
               <ArrowRight className="w-5 h-5" />
             </Link>
             <Link
               href="/login"
               className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all border border-slate-700 hover:border-slate-600"
             >
-              View Demo
+              Log in
             </Link>
           </div>
 
-          {/* Stats */}
-          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
-            {[
-              { value: "40%", label: "Reduced Wait Time" },
-              { value: "94%", label: "Prediction Accuracy" },
-              { value: "3×", label: "Faster Patient Flow" },
-              { value: "99.9%", label: "Uptime SLA" },
-            ].map((stat) => (
-              <div
-                key={stat.label}
-                className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 backdrop-blur"
-              >
-                <div className="text-3xl font-bold text-sky-400">
-                  {stat.value}
-                </div>
-                <div className="text-slate-400 text-sm mt-1">{stat.label}</div>
-              </div>
-            ))}
-          </div>
+          <p className="mt-10 text-slate-500 text-sm">
+            Three roles, one queue: patient, doctor, hospital admin.
+          </p>
         </div>
       </section>
 
@@ -139,12 +123,12 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-white mb-4">
-              Everything You Need to Run{" "}
-              <span className="text-sky-400">Smarter Hospitals</span>
+              What MediFlow{" "}
+              <span className="text-sky-400">Actually Does</span>
             </h2>
             <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-              From AI triage to real-time analytics, MediFlow covers the entire
-              patient journey.
+              Symptom triage, wait-time estimates, live queue state, and
+              hospital-wide queue analytics.
             </p>
           </div>
 
@@ -155,42 +139,42 @@ export default function LandingPage() {
                 color: "from-purple-500 to-violet-600",
                 title: "AI Triage Assistant",
                 description:
-                  "Patients describe symptoms in plain language. Our AI instantly recommends the right department with urgency scoring — no forms, no guessing.",
+                  "Patients describe symptoms in plain language. One model call suggests a department and an urgency level; the answer is checked against the known department and urgency values before it is shown.",
               },
               {
                 icon: Clock,
                 color: "from-sky-500 to-blue-600",
-                title: "Wait Time Prediction",
+                title: "Wait Time Estimates",
                 description:
-                  "Hybrid AI engine combines queue dynamics, appointment types, and historical data to deliver minute-accurate wait time estimates with confidence scores.",
+                  "The estimate is arithmetic over the current queue size and the doctor's average consult time. A single AI provider call adjusts it and returns a confidence score; without an API key a deterministic fallback provider does the same job offline.",
               },
               {
                 icon: Activity,
                 color: "from-emerald-500 to-teal-600",
                 title: "Live Queue Tracking",
                 description:
-                  "Patients see their real-time position, token number, and estimated call time — all updated instantly via WebSocket as the queue moves.",
+                  "Patients see their position, token number, and estimated wait, pushed over WebSocket as the queue changes — with polling as a fallback if the socket connection drops.",
               },
               {
                 icon: BarChart3,
                 color: "from-amber-500 to-orange-600",
                 title: "Admin Analytics",
                 description:
-                  "Hospital-wide operational dashboards with patient volume trends, department utilization, no-show risk, and crowd density heatmaps.",
+                  "Hospital-wide dashboard: patients booked today, completions, no-show rate, average estimated wait, per-department breakdown, and a weekly trend chart.",
               },
               {
                 icon: Shield,
                 color: "from-rose-500 to-red-600",
                 title: "Emergency Override",
                 description:
-                  "Admins can instantly move critical patients to the front of any queue with full audit logging and automatic notification to affected patients.",
+                  "Admins can move a patient to the front of a doctor's queue, shifting everyone else down. Every override writes an audit-log row naming the admin and the reason given.",
               },
               {
                 icon: Bell,
                 color: "from-cyan-500 to-sky-600",
-                title: "Smart Notifications",
+                title: "Notifications",
                 description:
-                  "Patients get alerted when their turn is approaching, doctors notified of emergencies, and admins informed of SLA breaches — all in real time.",
+                  "A notification row is written when an appointment is booked, and the called patient's browser is notified over WebSocket when the doctor presses Call Next.",
               },
             ].map((feature) => (
               <div
@@ -231,7 +215,7 @@ export default function LandingPage() {
                 icon: Stethoscope,
                 title: "Describe Symptoms",
                 description:
-                  "Patient opens MediFlow, types symptoms in plain language. AI triage instantly recommends the right department.",
+                  "Patient opens MediFlow and types symptoms in plain language. AI triage suggests a department to book into.",
               },
               {
                 step: "02",
@@ -318,7 +302,7 @@ export default function LandingPage() {
                   "Emergency queue override",
                   "No-show risk scoring",
                   "Department analytics",
-                  "Crowd density heatmaps",
+                  "Weekly volume trend chart",
                 ],
                 cta: "Register as Admin",
                 href: "/register?role=ADMIN",
@@ -360,17 +344,17 @@ export default function LandingPage() {
           <div className="relative bg-gradient-to-br from-sky-600/20 to-blue-800/20 border border-sky-500/20 rounded-3xl p-12 overflow-hidden">
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-1 bg-gradient-to-r from-transparent via-sky-400 to-transparent" />
             <h2 className="text-4xl font-bold text-white mb-4">
-              Ready to Transform Your Hospital?
+              Try It With the Seeded Data
             </h2>
             <p className="text-slate-400 mb-8 text-lg">
-              Join forward-thinking hospitals using MediFlow AI to cut wait
-              times, reduce no-shows, and improve patient satisfaction.
+              Register as a patient, doctor, or admin and walk the whole flow:
+              triage, booking, live queue, Call Next, emergency override.
             </p>
             <Link
               href="/register"
               className="inline-flex items-center gap-2 bg-sky-500 hover:bg-sky-400 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all hover:shadow-2xl hover:shadow-sky-500/30"
             >
-              Get Started Free
+              Create an Account
               <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
@@ -385,11 +369,11 @@ export default function LandingPage() {
               <Activity className="w-3 h-3 text-white" />
             </div>
             <span className="text-slate-400 text-sm">
-              MediFlow AI — Healthcare Operations Platform
+              MediFlow — Healthcare Operations Platform
             </span>
           </div>
           <p className="text-slate-600 text-sm">
-            © {new Date().getFullYear()} MediFlow AI. All rights reserved.
+            © {new Date().getFullYear()} MediFlow. All rights reserved.
           </p>
         </div>
       </footer>

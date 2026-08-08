@@ -60,7 +60,10 @@ export default function QueuePage({ params }: { params: Promise<{ appointmentId:
     const socket = connectSocket();
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
-    socket.emit("patient:join", { appointmentId, patientId: session.user.id });
+    // No patientId: the server derives it from the session cookie. The
+    // appointment id is still sent, but the server checks it belongs to this
+    // patient before joining the room.
+    socket.emit("patient:join", { appointmentId });
     socket.on("position:changed", (data: { appointmentId: string }) => {
       if (data.appointmentId === appointmentId) { refetch(); setLastUpdate(new Date()); }
     });

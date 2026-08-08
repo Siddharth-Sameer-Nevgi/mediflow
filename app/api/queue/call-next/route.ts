@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { callNextPatient } from "@/features/queue/queue.service";
 import { callNextSchema } from "@/lib/validations";
 
@@ -21,8 +22,8 @@ export async function POST(req: NextRequest) {
     const result = await callNextPatient(doctorId);
 
     // Emit real-time events to all patients in this doctor's queue
-    const socketUrl = process.env.SOCKET_SERVER_URL ?? "http://localhost:3001";
-    const secret = process.env.SOCKET_SERVER_SECRET ?? "mediflow-socket-dev-secret";
+    const socketUrl = env.SOCKET_SERVER_URL;
+    const secret = env.SOCKET_SERVER_SECRET;
 
     // Notify the called patient their turn has arrived
     if (result.calledAppointmentId) {

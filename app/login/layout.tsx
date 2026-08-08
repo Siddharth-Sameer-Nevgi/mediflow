@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Sign In | MediFlow AI" };
+export const metadata: Metadata = { title: "Sign In | MediFlow" };
 
 export default function LoginLayout({
   children,

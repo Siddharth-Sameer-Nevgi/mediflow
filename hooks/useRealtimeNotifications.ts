@@ -32,6 +32,11 @@ export function useRealtimeNotifications(appointmentId?: string) {
   };
 
   useEffect(() => {
+    // Deliberately emits no `*:join`. Socket.IO only delivers room-targeted
+    // events, and `connectSocket()` returns a module-level singleton — so this
+    // hook sees events for whichever rooms the current page joined (the patient
+    // queue page joins `appointment:<id>`). It never names a room itself, which
+    // means it cannot be used to subscribe to somebody else's.
     const socket = connectSocket();
 
     socket.on(

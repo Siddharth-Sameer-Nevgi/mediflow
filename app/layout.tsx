@@ -12,15 +12,15 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "MediFlow AI — Smart Hospital Queue Management",
-    template: "%s | MediFlow AI",
+    default: "MediFlow — Smart Hospital Queue Management",
+    template: "%s | MediFlow",
   },
   description:
-    "AI-powered hospital queue and patient flow management. Real-time wait predictions, smart triage, and seamless doctor-patient coordination.",
+    "Hospital OPD queue management: live queue positions over WebSocket, AI-assisted symptom triage, and wait-time estimates with a confidence score.",
   keywords: ["hospital queue", "patient flow", "medical AI", "wait time prediction", "healthcare"],
   openGraph: {
-    title: "MediFlow AI",
-    description: "AI-powered hospital queue management platform",
+    title: "MediFlow",
+    description: "Hospital OPD queue management with live queue tracking",
     type: "website",
   },
 };

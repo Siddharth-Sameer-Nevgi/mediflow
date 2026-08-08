@@ -130,7 +130,10 @@ export default function DoctorDashboard() {
     const socket = connectSocket();
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
-    socket.emit("doctor:join", { doctorId });
+    // No arguments: the server resolves this doctor's id from the session
+    // cookie on the handshake, so the client cannot ask for another doctor's
+    // queue room.
+    socket.emit("doctor:join");
     socket.on("queue:updated", () => {
       queryClient.invalidateQueries({ queryKey: ["doctor-queue", doctorId] });
     });

@@ -30,7 +30,7 @@ function getPageLabel(pathname: string): string {
   for (const [route, label] of Object.entries(routeLabels)) {
     if (pathname.startsWith(route + "/")) return label;
   }
-  return "MediFlow AI";
+  return "MediFlow";
 }
 
 export function Topbar() {

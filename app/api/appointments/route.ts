@@ -18,35 +18,67 @@ const ACTIVE_STATUSES = ["BOOKED", "CHECKED_IN", "IN_CONSULTATION"] as const;
 const MAX_BOOKING_ATTEMPTS = 5;
 
 /**
- * True when the failure is specifically our per-doctor-per-day token collision,
- * which is safe to retry. Any other unique violation is a real error and must
- * not be retried.
+ * Returned for both the pre-check and the index rejection, so a patient sees
+ * the same message whichever one caught them.
  */
-function isTokenCollision(error: unknown): boolean {
+const DUPLICATE_BOOKING_MESSAGE =
+  "You already have an appointment with this doctor today";
+
+/** Index names, so a P2002 can be attributed to the right constraint. */
+const TOKEN_INDEX = "Appointment_doctorId_scheduledDate_tokenNumber_key";
+const DUPLICATE_BOOKING_INDEX = "Appointment_patient_doctor_day_active_key";
+
+/**
+ * Which of Appointment's two unique constraints a P2002 came from, or `null`
+ * when the error is not a unique violation we recognise.
+ *
+ *   "token"     — two bookings raced for the same token number. Retryable:
+ *                 re-reading MAX(tokenNumber) yields a fresh candidate.
+ *   "duplicate" — this patient already has a live appointment with this doctor
+ *                 today. Not retryable; retrying can only fail the same way.
+ *
+ * Attribution has to be by *name*. Appointment used to have one unique
+ * constraint, so an unattributable P2002 on the model could safely be assumed
+ * to be the token index; the partial unique index added in
+ * 20260808120000_prevent_duplicate_active_bookings ended that. Keeping the old
+ * `modelName === "Appointment"` fallback would classify a duplicate-booking
+ * rejection as a token collision, retry it five times, and return a 409 blaming
+ * queue contention for a mistake the user can actually fix.
+ */
+function classifyBookingConflict(
+  error: unknown
+): "token" | "duplicate" | null {
   if (
     !(error instanceof Prisma.PrismaClientKnownRequestError) ||
     error.code !== "P2002"
   ) {
-    return false;
+    return null;
   }
 
-  const meta = error.meta as
-    | { target?: unknown; modelName?: string }
-    | undefined;
+  // Deliberately searches `error.meta` only, never `error.message`. Prisma
+  // inlines a snippet of the *calling source file* into the message, and the
+  // `create()` call below mentions both `tokenNumber` and `patientId` — so
+  // matching column names against the message would classify by what this file
+  // happens to look like rather than by which constraint actually fired.
+  const meta = JSON.stringify(error.meta ?? null);
 
-  // `meta.target` names the offending columns under the default engine. The pg
-  // driver adapter this project uses omits `target` altogether (it reports only
-  // `modelName` plus a wrapped DriverAdapterError) and names the columns in the
-  // message text instead — so check target, then the message, then fall back to
-  // the model. Appointment's only unique constraint is the token index, so a
-  // P2002 on that model is a token collision.
-  if (meta?.target !== undefined) {
-    return JSON.stringify(meta.target).includes("tokenNumber");
-  }
-  if (error.message.includes("tokenNumber")) {
-    return true;
-  }
-  return meta?.modelName === "Appointment";
+  // With the pg driver adapter this project uses, `meta` carries the raw
+  // Postgres error at `driverAdapterError.cause.originalMessage`:
+  //   duplicate key value violates unique constraint "<index name>"
+  // The index name is unambiguous, so it is tried first.
+  if (meta.includes(DUPLICATE_BOOKING_INDEX)) return "duplicate";
+  if (meta.includes(TOKEN_INDEX)) return "token";
+
+  // Fallback for the default query engine, which reports `meta.target` as a
+  // bare column list with no index name. The two constraints differ in whether
+  // tokenNumber is part of the key, so that is enough to tell them apart.
+  if (meta.includes("tokenNumber")) return "token";
+  if (meta.includes("patientId")) return "duplicate";
+
+  // A unique violation on Appointment matching neither. Retrying blind is what
+  // the old `modelName === "Appointment"` fallback did, and it is exactly how a
+  // duplicate booking would get misreported. Surface it instead.
+  return null;
 }
 
 /** Raised when the transaction is found to have expired mid-flight. */
@@ -167,6 +199,35 @@ export async function POST(req: NextRequest) {
     );
 
     // ---------------------------------------------------------------------
+    // Duplicate-booking pre-check.
+    //
+    // Purely an optimisation. The authoritative guard is the partial unique
+    // index `Appointment_patient_doctor_day_active_key`, which holds even if
+    // this query is racing a concurrent booking that has not committed yet.
+    // Checking here first means the overwhelmingly common case — a patient
+    // re-submitting a form they already submitted — costs one indexed SELECT
+    // instead of two AI round-trips followed by a transaction that queues on
+    // the doctor's advisory lock only to be rejected on insert.
+    // ---------------------------------------------------------------------
+    const existingBooking = await prisma.appointment.findFirst({
+      where: {
+        patientId: patient.id,
+        doctorId,
+        scheduledDate,
+        status: { in: [...ACTIVE_STATUSES] },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (existingBooking) {
+      return NextResponse.json(
+        { error: DUPLICATE_BOOKING_MESSAGE },
+        { status: 409 }
+      );
+    }
+
+    // ---------------------------------------------------------------------
     // AI calls: network I/O with multi-second timeouts. They run BEFORE the
     // transaction opens and are never retried, so no transaction is ever held
     // open across a network round-trip.
@@ -211,13 +272,26 @@ export async function POST(req: NextRequest) {
     //
     //   1. An advisory lock keyed on doctor+day serialises allocation, so each
     //      caller reads a value that already includes its predecessors. This is
-    //      what makes allocation *succeed*. Without it, N concurrent bookings
-    //      all read the same MAX and N-1 abort on the unique index; retrying
-    //      under that contention is a thundering herd (measured on this route:
-    //      5 of 10 bookings exhausted their retries and 409'd).
+    //      what makes allocation *succeed*. Without it, concurrent bookings all
+    //      read the same MAX, all but one abort on the unique index, and the
+    //      retries go on to fight over the same value.
+    //
+    //      Re-runnable, rather than asserted: scripts/measure-booking-
+    //      contention.ts performs the same read-MAX/insert against a scratch
+    //      table, with the lock off and then on. Last run from a dev machine
+    //      against Neon us-east-1, 10 concurrent allocations committed 2 and
+    //      lost 8 to the unique index with the lock off, and committed 10 of 10
+    //      with it on. Those figures move with latency and concurrency — re-run
+    //      the script for your own environment rather than trusting these.
     //   2. The unique index is the correctness backstop. It holds even if this
     //      code is bypassed, rewritten, or run from a second service, and the
     //      P2002 retry below covers the residual window.
+    //
+    // The duplicate-booking index guards a different thing and needs no lock of
+    // its own: (patientId, doctorId, scheduledDate) are all known before the
+    // transaction opens, so there is no read-modify-write to serialise. The
+    // index alone decides that race, and the loser is rejected outright rather
+    // than retried.
     //
     // Only one lock is taken, so this path cannot deadlock.
     // ---------------------------------------------------------------------
@@ -338,12 +412,15 @@ export async function POST(req: NextRequest) {
             // P2028 as soon as a few bookings for one doctor overlap.
             //
             // Sizing: the critical section is 6 statements, so its duration is
-            // ~6x the database round-trip. Measured at 251ms RTT from a dev
-            // machine to Neon us-east-1 that is ~1.5s per booking, and the Nth
-            // concurrent booking for the same doctor waits ~1.5s*(N-1). 30s
-            // therefore absorbs ~20 simultaneous bookings for one doctor before
-            // anyone sees a 409. Co-located with the database (RTT ~1-2ms) the
-            // same section is ~12ms and this ceiling is thousands of bookings.
+            // roughly 6x the database round-trip.
+            // scripts/measure-booking-contention.ts prints the round-trip it
+            // measures; last run from a dev machine to Neon us-east-1 it
+            // reported a 270ms median, i.e. ~1.6s per booking, so the Nth
+            // concurrent booking for the same doctor waits ~1.6s*(N-1) and 30s
+            // absorbs roughly 18 of them before anyone sees a 409. Co-located
+            // with the database the round-trip is a couple of milliseconds and
+            // that ceiling is far higher; on a slower link it is lower. Re-run
+            // the script rather than assuming this number holds for you.
             timeout: 30_000,
             maxWait: 10_000,
           }
@@ -367,7 +444,20 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        if (!isTokenCollision(error)) throw error;
+        const conflict = classifyBookingConflict(error);
+
+        // The pre-check above already returned 409 for the common case, so
+        // reaching here means a concurrent booking committed between that
+        // SELECT and this INSERT. The index caught it. Return immediately —
+        // retrying re-inserts the same three values and fails identically.
+        if (conflict === "duplicate") {
+          return NextResponse.json(
+            { error: DUPLICATE_BOOKING_MESSAGE },
+            { status: 409 }
+          );
+        }
+
+        if (conflict !== "token") throw error;
 
         if (attempt === MAX_BOOKING_ATTEMPTS) {
           console.error(

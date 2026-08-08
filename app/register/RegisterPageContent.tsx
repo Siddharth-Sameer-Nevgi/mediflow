@@ -70,7 +70,7 @@ export default function RegisterPageContent() {
         return;
       }
 
-      toast.success("Welcome to MediFlow AI! 🎉");
+      toast.success("Welcome to MediFlow! 🎉");
       router.push(roleRedirects[selectedRole] ?? "/patient/dashboard");
       router.refresh();
     } catch {
@@ -87,7 +87,7 @@ export default function RegisterPageContent() {
           <Activity className="w-7 h-7 text-white" />
         </div>
         <h1 className="text-2xl font-bold text-white">Create Your Account</h1>
-        <p className="text-slate-400 text-sm mt-1">Join MediFlow AI today</p>
+        <p className="text-slate-400 text-sm mt-1">Join MediFlow today</p>
       </div>
 
       <div className="bg-slate-800/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
