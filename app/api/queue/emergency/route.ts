@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
+import { emitQueueEvent } from "@/lib/socket-emit";
 
 export async function POST(req: NextRequest) {
   // ── Auth & role guard ─────────────────────────────────────────────────────
@@ -89,22 +89,10 @@ export async function POST(req: NextRequest) {
     });
 
     // ── Emit Socket.IO event (non-fatal) ──────────────────────────────────
-    const socketUrl = env.SOCKET_SERVER_URL;
-    const secret = env.SOCKET_SERVER_SECRET;
-
-    await fetch(`${socketUrl}/emit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${secret}`,
-      },
-      body: JSON.stringify({
-        event: "queue:emergency",
-        room: `doctor:${doctorId}`,
-        data: { appointmentId, newPosition: 1, reason },
-      }),
-    }).catch(() => {
-      // Non-fatal — socket server may be offline
+    await emitQueueEvent({
+      event: "queue:emergency",
+      room: `doctor:${doctorId}`,
+      data: { appointmentId, newPosition: 1, reason },
     });
 
     return NextResponse.json({ ok: true, newPosition: 1 });

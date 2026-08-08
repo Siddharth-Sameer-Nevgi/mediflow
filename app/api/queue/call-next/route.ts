@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { env } from "@/lib/env";
 import { callNextPatient } from "@/features/queue/queue.service";
+import { emitQueueEvents, type QueueEvent } from "@/lib/socket-emit";
 import { callNextSchema } from "@/lib/validations";
 
 export async function POST(req: NextRequest) {
@@ -21,39 +21,41 @@ export async function POST(req: NextRequest) {
     const { doctorId } = parsed.data;
     const result = await callNextPatient(doctorId);
 
-    // Emit real-time events to all patients in this doctor's queue
-    const socketUrl = env.SOCKET_SERVER_URL;
-    const secret = env.SOCKET_SERVER_SECRET;
+    // Emitted after callNextPatient's transaction has committed, never inside
+    // it: a rolled-back transaction must not leave clients told about a change
+    // that did not happen.
+    const events: QueueEvent[] = [];
 
     // Notify the called patient their turn has arrived
     if (result.calledAppointmentId) {
-      await fetch(`${socketUrl}/emit`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${secret}`,
+      events.push({
+        event: "your_turn_approaching",
+        room: `appointment:${result.calledAppointmentId}`,
+        data: { appointmentId: result.calledAppointmentId },
+      });
+    }
+
+    // Tell each patient still waiting what their new position is
+    for (const entry of result.resequenced) {
+      events.push({
+        event: "position:changed",
+        room: `patient:${entry.patientId}`,
+        data: {
+          appointmentId: entry.appointmentId,
+          newPosition: entry.position,
+          estimatedWaitMins: entry.estimatedWaitMins,
         },
-        body: JSON.stringify({
-          event: "your_turn_approaching",
-          room: `appointment:${result.calledAppointmentId}`,
-          data: { appointmentId: result.calledAppointmentId },
-        }),
-      }).catch(() => {}); // non-fatal
+      });
     }
 
     // Notify all patients in queue that positions shifted
-    await fetch(`${socketUrl}/emit`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${secret}`,
-      },
-      body: JSON.stringify({
-        event: "queue:updated",
-        room: `doctor:${doctorId}`,
-        data: { doctorId, action: "call_next" },
-      }),
-    }).catch(() => {}); // non-fatal
+    events.push({
+      event: "queue:updated",
+      room: `doctor:${doctorId}`,
+      data: { doctorId, action: "call_next" },
+    });
+
+    await emitQueueEvents(events);
 
     return NextResponse.json(result);
   } catch (error) {

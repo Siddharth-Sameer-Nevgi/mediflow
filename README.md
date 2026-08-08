@@ -205,7 +205,7 @@ Override it with `SEED_PASSWORD="your-password" npm run db:seed`.
 | `npm run db:generate` | Regenerate the Prisma client |
 | `npm run db:seed` | Seed demo data |
 | `npm run db:studio` | Prisma Studio |
-| `npx ts-node --project tsconfig.server.json scripts/measure-booking-contention.ts` | Measures database round-trip time and how many concurrent token allocations collide with and without the advisory lock. Reproduces the figures quoted in the comments in [app/api/appointments/route.ts](app/api/appointments/route.ts) |
+| `npm run measure:contention` | Measures database round-trip time and how many concurrent token allocations collide with and without the advisory lock. Reproduces the figures quoted in the comments in [app/api/appointments/route.ts](app/api/appointments/route.ts) and in [Concurrency](#concurrency) |
 
 ---
 
@@ -237,7 +237,18 @@ A: INSERT tokenNumber = 8  (commits)   B: INSERT tokenNumber = 8  (rejected)
 Without the lock both callers read 7 and one is rejected on the index; with it, B
 blocks until A commits, reads 8, and inserts 9 — both patients get a distinct
 token. `scripts/measure-booking-contention.ts` runs exactly this, with the lock
-off and then on, and prints the outcome for your database.
+off and then on, and prints the outcome for your database:
+
+```bash
+npm run measure:contention
+```
+
+Every figure quoted in this section and in the comments in
+[app/api/appointments/route.ts](app/api/appointments/route.ts) — the 270ms median
+round-trip, 2-of-10 committing without the lock and 10-of-10 with it, the ~18
+concurrent bookings the 30s transaction timeout absorbs — came from that one
+command. They move with latency and concurrency, so re-run it against your own
+database rather than trusting the numbers here.
 
 A rejection on the index is retried up to five times, since re-reading the
 maximum yields a fresh candidate. Exhausting the retries returns `409`.
