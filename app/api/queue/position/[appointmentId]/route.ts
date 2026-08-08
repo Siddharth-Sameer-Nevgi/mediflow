@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getQueuePosition } from "@/features/queue/queue.repository";
 import { prisma } from "@/lib/prisma";
+import { findOwnedAppointment } from "@/lib/ownership";
 
 export async function GET(
   req: NextRequest,
@@ -14,18 +15,26 @@ export async function GET(
 
   try {
     const { appointmentId } = await params;
-    
-    const appointment = await prisma.appointment.findUnique({
-      where: { id: appointmentId },
-      include: { doctor: true },
+
+    // Prevents: enumerating appointment ids to read strangers' queue positions,
+    // wait times and token numbers. The socket layer already blocks precisely
+    // this — `patient:join` verifies the appointment belongs to the caller
+    // before joining `appointment:<id>` (server/socket-server.ts) — so the two
+    // paths to the same data now enforce the same rule instead of the HTTP one
+    // being the way around the socket one.
+    const appointment = await findOwnedAppointment(appointmentId, {
+      id: session.user.id,
+      role: session.user.role,
     });
 
     if (!appointment) {
-      return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
+      // 404 whether the row is missing or simply not the caller's, so the
+      // endpoint cannot be used to test which ids exist.
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const position = await getQueuePosition(appointmentId);
-    
+
     // Get total in queue
     const totalInQueue = await prisma.queueEntry.count({
       where: {

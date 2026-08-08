@@ -8,6 +8,7 @@ import {
   type ResequencedEntry,
 } from "@/features/queue/queue.service";
 import { emitQueueEvents, type QueueEvent } from "@/lib/socket-emit";
+import { findOwnedAppointment } from "@/lib/ownership";
 
 /**
  * Statuses a cancellation may not act on. `COMPLETED` and `CANCELLED` are
@@ -18,76 +19,6 @@ const UNCANCELLABLE = ["COMPLETED", "CANCELLED", "IN_CONSULTATION"] as const;
 
 /** Status changes that remove a patient from the queue, leaving it stale. */
 const QUEUE_REMOVING = ["NO_SHOW", "CANCELLED"] as const;
-
-/**
- * The appointment plus everything the ownership rules need to be decided
- * without a second round-trip.
- */
-const OWNERSHIP_INCLUDE = {
-  patient: { select: { userId: true } },
-  doctor: { select: { userId: true } },
-  department: { select: { hospitalId: true } },
-} as const;
-
-/**
- * Load an appointment only if the caller is entitled to act on it, else `null`.
- *
- * Returning `null` for both "no such row" and "not yours" is deliberate, and
- * every caller must turn it into a **404, never a 403**. A 403 confirms the id
- * exists, which turns the endpoint into an oracle: an attacker enumerating cuids
- * learns which ones are real appointments and how many the hospital has, without
- * ever being allowed to touch one.
- */
-async function findOwnedAppointment(
-  id: string,
-  user: { id: string; role: string }
-) {
-  const appointment = await prisma.appointment.findUnique({
-    where: { id },
-    include: OWNERSHIP_INCLUDE,
-  });
-
-  if (!appointment) return null;
-
-  switch (user.role) {
-    /**
-     * Prevents: a signed-in patient cancelling or mutating a *stranger's*
-     * appointment by guessing or enumerating its id. This is the hole the
-     * handlers below used to have — DELETE checked only that someone was signed
-     * in, so any account could cancel any appointment in the hospital.
-     */
-    case "PATIENT":
-      return appointment.patient.userId === user.id ? appointment : null;
-
-    /**
-     * Prevents: doctor A marking doctor B's patient NO_SHOW or COMPLETED.
-     * The old `role !== "DOCTOR"` check let every doctor in the system write to
-     * every other doctor's queue — falsifying another clinician's records and
-     * reordering their queue.
-     */
-    case "DOCTOR":
-      return appointment.doctor.userId === user.id ? appointment : null;
-
-    /**
-     * Prevents: an admin of hospital X acting on hospital Y's appointments.
-     * The hospital is read from the Admin row rather than the JWT's
-     * `hospitalId` claim, so a reassignment or revocation takes effect on the
-     * next request instead of whenever the token happens to refresh.
-     */
-    case "ADMIN": {
-      const admin = await prisma.admin.findUnique({
-        where: { userId: user.id },
-        select: { hospitalId: true },
-      });
-      return admin && admin.hospitalId === appointment.department.hospitalId
-        ? appointment
-        : null;
-    }
-
-    default:
-      return null;
-  }
-}
 
 /**
  * Events for a queue that has just been renumbered.

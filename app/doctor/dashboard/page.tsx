@@ -145,11 +145,9 @@ export default function DoctorDashboard() {
 
   const callNextMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/queue/call-next", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doctorId }),
-      });
+      // No body: the server resolves this doctor's id from the session, the
+      // same way `socket.emit("doctor:join")` above takes no arguments.
+      const res = await fetch("/api/queue/call-next", { method: "POST" });
       if (!res.ok) throw new Error("Failed to call next");
       return res.json();
     },

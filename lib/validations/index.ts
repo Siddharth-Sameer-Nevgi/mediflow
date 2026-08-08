@@ -44,9 +44,11 @@ export const updateAppointmentStatusSchema = z.object({
 });
 
 // Queue schemas
-export const callNextSchema = z.object({
-  doctorId: z.string().cuid(),
-});
+//
+// `callNextSchema` used to be `{ doctorId }` and is deliberately gone. That was
+// the only field, and POST /api/queue/call-next now resolves the doctor from
+// the session instead of trusting the body — so there is nothing left to
+// validate, and no schema to tempt a future caller into re-accepting it.
 
 export const emergencyQueueSchema = z.object({
   appointmentId: z.string().cuid(),

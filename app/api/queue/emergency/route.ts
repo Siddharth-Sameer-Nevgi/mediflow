@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { emitQueueEvent } from "@/lib/socket-emit";
+import { findOwnedAppointment } from "@/lib/ownership";
 
 export async function POST(req: NextRequest) {
   // ── Auth & role guard ─────────────────────────────────────────────────────
@@ -35,6 +36,23 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // ── Ownership ──────────────────────────────────────────────────────────
+    // Prevents: an admin of hospital X reordering hospital Y's queue — pushing
+    // a patient in a hospital they have no relationship with to the front of a
+    // clinician's list. `role === "ADMIN"` above authorises *an* admin, never
+    // *this* hospital's admin. The ADMIN branch of findOwnedAppointment already
+    // resolves the hospital from the Admin row and compares it to the
+    // appointment's department, so it is reused rather than restated here.
+    const appointment = await findOwnedAppointment(appointmentId, {
+      id: session.user.id,
+      role: session.user.role,
+    });
+
+    if (!appointment) {
+      // 404 rather than 403: a 403 would confirm the appointment id is real.
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     // ── Find the queue entry ───────────────────────────────────────────────
     const entry = await prisma.queueEntry.findFirst({
       where: { appointmentId },
