@@ -91,6 +91,27 @@ export async function resequenceQueue(
 
   const resequenced: ResequencedEntry[] = [];
 
+  // ── Known cost: one round-trip per waiting patient ───────────────────────
+  // This loop issues one `tx.queueEntry.update` per waiting patient, awaited
+  // one at a time, with the transaction open the whole way through. At the
+  // 306ms round-trip measured from a dev machine to Neon us-east-1 (see
+  // scripts/measure-booking-contention.ts), a 30-patient queue is ~9s of held
+  // transaction for a single cancellation, against the 30s timeout — and that
+  // is one cancellation, serialising every other write to those rows behind it.
+  // The cost is linear in queue length, so it degrades exactly when the queue
+  // is busiest.
+  //
+  // A single `UPDATE "QueueEntry" SET position = v.position, ... FROM (VALUES
+  // ...) AS v(id, position, wait) WHERE "QueueEntry".id = v.id` collapses the
+  // whole loop to one round-trip regardless of queue length, and the values are
+  // all computed here already.
+  //
+  // Not done yet, deliberately: real OPD queues at this deployment's scale are
+  // short enough that the loop is a handful of round-trips, and the rewrite
+  // means hand-written SQL where there is currently type-checked Prisma. It is
+  // recorded here so it is a decision rather than an oversight, and so the
+  // trigger is known — if queues routinely run past ~20 patients, this is the
+  // first thing to change.
   for (let i = 0; i < waiting.length; i++) {
     const position = startPosition + i;
     // Everyone ahead of you has to be seen first; position 1 waits for nobody.

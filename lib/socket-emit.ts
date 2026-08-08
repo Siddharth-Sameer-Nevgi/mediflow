@@ -44,7 +44,32 @@ export async function emitQueueEvent(event: QueueEvent): Promise<void> {
   }
 }
 
-/** Fire a batch of events concurrently. Never rejects. */
+/**
+ * Fire a batch of events concurrently. Never rejects.
+ *
+ * ── Known cost: one HTTP POST per event ─────────────────────────────────────
+ * "Batch" describes the caller's array, not the wire. This fans out to N
+ * separate POSTs at `/emit`, one per event, because that endpoint accepts a
+ * single `{ event, room, data }` object. Since every queue-removing change ends
+ * in a resequence, the count tracks queue length: a cancellation in a 30-person
+ * queue emits 30 `position:changed` events plus one `queue:updated` for the
+ * doctor — 31 requests, 31 connections, 31 auth-header checks, all triggered by
+ * one patient tapping cancel. `Promise.all` makes them concurrent, not fewer,
+ * and they are 31 chances for the socket server's accept queue to be the
+ * bottleneck rather than the work itself.
+ *
+ * The fix is obvious: a batched endpoint taking `{ events: QueueEvent[] }`, so
+ * this function makes one request and the socket server loops over rooms
+ * in-process. It has not been done because it is a change to a second service
+ * — server/socket-server.ts has to grow the new route and keep the single-event
+ * one for `emitQueueEvent`'s callers, and the two have to be deployed in the
+ * right order or emits silently 404 into the `catch` below and vanish. That is
+ * a coordinated deploy for a cost that, at current queue lengths, is a handful
+ * of requests to a process on the same host.
+ *
+ * Recorded rather than fixed. It is not a bug at this scale; it is a shape that
+ * stops working at a scale this project has not reached.
+ */
 export async function emitQueueEvents(events: QueueEvent[]): Promise<void> {
   await Promise.all(events.map(emitQueueEvent));
 }

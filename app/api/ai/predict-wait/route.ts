@@ -60,7 +60,45 @@ export async function POST(req: NextRequest) {
       emergencyCount,
     });
 
-    return NextResponse.json(result);
+    // ── Why `breakdown` is dropped ────────────────────────────────────────
+    // This route takes an arbitrary `doctorId` from the body and, until now,
+    // returned `breakdown` alongside the estimate. `breakdown.baseWait` is
+    // `queueSize * avgConsultMins` and `breakdown.emergencyPremium` is
+    // `emergencyCount * avgConsultMins * 1.5` — identical arithmetic in both
+    // providers, so which one is live changes nothing
+    // (features/ai/mock.provider.ts, features/ai/gemini.provider.ts; Gemini
+    // only refines `confidence` and applies a ±10 min correction, passing
+    // `breakdown` through untouched).
+    // `avgConsultMins` is published per doctor by GET /api/doctors, so both
+    // divide straight back out: the response handed the caller a named
+    // doctor's live active-appointment count and live emergency count. That is
+    // the same data GET /api/queue/[doctorId] now refuses to anyone but that
+    // doctor and their hospital's admin — reachable by a second route, which
+    // makes the ownership check there decorative.
+    //
+    // Of the two fixes offered, this is the estimate-without-the-count one
+    // rather than requiring an existing appointment with the doctor. Requiring
+    // one would break the only caller: app/patient/book/page.tsx calls this
+    // while the patient is still *choosing* a doctor, before any appointment
+    // exists, precisely so they can compare waits. An ownership rule that
+    // fails on the endpoint's sole legitimate use is not a rule, it is a
+    // removal.
+    //
+    // The estimate itself stays public-to-signed-in-users on purpose. A number
+    // of minutes is what the patient is here for, and it is lossy: the same
+    // ~45 min covers many combinations of queue size, appointment type and
+    // emergencies. `breakdown` was the part that inverted cleanly, so that is
+    // the part that goes. No frontend reads it — the book page's
+    // `WaitPrediction` type is `{ estimatedWaitMins, confidence }`.
+    //
+    // Residual, accepted: the estimate is still a coarse channel. Someone
+    // polling one doctor can watch it step by `avgConsultMins` and infer queue
+    // movement. Closing that means not answering the question the endpoint
+    // exists to answer.
+    return NextResponse.json({
+      estimatedWaitMins: result.estimatedWaitMins,
+      confidence: result.confidence,
+    });
   } catch (error) {
     console.error("[POST /ai/predict-wait]", error);
     return NextResponse.json({ error: "AI service error" }, { status: 500 });

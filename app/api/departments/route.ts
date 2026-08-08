@@ -3,6 +3,20 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
+  // Prevents: an unauthenticated caller enumerating the hospital's internal
+  // structure — every active department, its code, and `_count.appointments`,
+  // which is a live per-department patient volume. Omitting `hospitalId` walks
+  // every hospital in the database at once. This handler made no `auth()` call
+  // at all, so all of that was a single curl away.
+  //
+  // A session is the whole bar, as on /api/doctors: the department list is what
+  // a patient browses before booking, so it is not ownership-scoped. The POST
+  // below already required ADMIN; only the read was open.
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const hospitalId = searchParams.get("hospitalId");
 

@@ -278,11 +278,38 @@ export async function POST(req: NextRequest) {
     //
     //      Re-runnable, rather than asserted: scripts/measure-booking-
     //      contention.ts performs the same read-MAX/insert against a scratch
-    //      table, with the lock off and then on. Last run from a dev machine
-    //      against Neon us-east-1, 10 concurrent allocations committed 2 and
-    //      lost 8 to the unique index with the lock off, and committed 10 of 10
-    //      with it on. Those figures move with latency and concurrency — re-run
-    //      the script for your own environment rather than trusting these.
+    //      table, with the lock off and then on.
+    //
+    //        Dev machine (India) -> Neon us-east-1, 20 RTT samples.
+    //          RTT: median 306ms, min 225ms, max 2567ms.
+    //          10 concurrent token allocations, advisory lock OFF:
+    //            1 committed, 9 unique conflicts, 1518ms wall clock.
+    //          10 concurrent token allocations, advisory lock ON:
+    //            10 committed, 0 conflicts, 9214ms wall clock.
+    //
+    //      Read those two wall-clock numbers carefully, because the obvious
+    //      reading of both is wrong.
+    //
+    //      The lock-off run finished in a sixth of the time because it failed.
+    //      Nine of the ten allocations aborted on the unique index, and an
+    //      abort returns as soon as the index rejects the insert — there is no
+    //      commit to wait for and no work after it. 1518ms is the cost of one
+    //      booking plus nine fast rejections. Fast failure is not throughput,
+    //      and the correct comparison between the runs is 1 committed versus
+    //      10, not 1518ms versus 9214ms.
+    //
+    //      The lock-on run's 9214ms is dominated by the link, not by the lock.
+    //      ~921ms per booking against a ~306ms median RTT is about three round
+    //      trips inside the probe's critical section, which is what serialising
+    //      ten of them costs from a laptop in India talking to us-east-1. It is
+    //      not a statement that this system books ten patients in nine seconds:
+    //      co-located with the database the same serialised path is single-digit
+    //      milliseconds per booking. The figure measures the distance to the
+    //      database, and the lock's job is only to make the ten of them queue
+    //      instead of collide.
+    //
+    //      Those figures move with latency and concurrency — re-run the script
+    //      for your own environment rather than trusting these.
     //   2. The unique index is the correctness backstop. It holds even if this
     //      code is bypassed, rewritten, or run from a second service, and the
     //      P2002 retry below covers the residual window.
@@ -415,12 +442,42 @@ export async function POST(req: NextRequest) {
             // roughly 6x the database round-trip.
             // scripts/measure-booking-contention.ts prints the round-trip it
             // measures; last run from a dev machine to Neon us-east-1 it
-            // reported a 270ms median, i.e. ~1.6s per booking, so the Nth
-            // concurrent booking for the same doctor waits ~1.6s*(N-1) and 30s
-            // absorbs roughly 18 of them before anyone sees a 409. Co-located
+            // reported a 306ms median, i.e. ~1.8s per booking, so the Nth
+            // concurrent booking for the same doctor waits ~1.8s*(N-1) and 30s
+            // absorbs roughly 16 of them before anyone sees a 409. Co-located
             // with the database the round-trip is a couple of milliseconds and
             // that ceiling is far higher; on a slower link it is lower. Re-run
             // the script rather than assuming this number holds for you.
+            //
+            // KNOWN FLAW IN THE SIZING ABOVE. That "~16 concurrent bookings"
+            // is derived from the *median* round-trip, and a median is the
+            // wrong statistic for a capacity ceiling. The same 20-sample run
+            // recorded a max round-trip of 2567ms — 8.4x the median. Six
+            // statements at the tail rate is a ~15s critical section, so 30s
+            // absorbs about **two** concurrent bookings for one doctor, not
+            // sixteen. The real ceiling is therefore an order of magnitude
+            // below the number this comment used to state, and a single doctor
+            // with three patients booking at once is enough to reach it. Nobody
+            // sized this against the tail; the median was used because it was
+            // the figure the script printed.
+            //
+            // Hypothesis, not a finding, for where a 2567ms round-trip comes
+            // from: Neon autosuspends an idle branch, and the first query after
+            // a suspension pays the cold start. That would explain a single
+            // extreme sample in an otherwise 225-306ms distribution better than
+            // ordinary jitter does. It has not been confirmed — no correlation
+            // was checked between the slow sample and the branch's idle time,
+            // and until it is, a link that is simply occasionally that bad is
+            // equally consistent with the data.
+            //
+            // The fix, deliberately NOT applied here: either shorten the
+            // critical section so fewer round-trips sit inside the transaction
+            // (the two reads are already merged; the create/create/create tail
+            // is what remains), or size the timeout against a measured p99
+            // rather than a median. Both are real changes with their own
+            // trade-offs, and raising the timeout to cover the tail would just
+            // convert a 409 into a longer hang. Documenting the limitation is
+            // the point; a change here would hide it.
             timeout: 30_000,
             maxWait: 10_000,
           }
