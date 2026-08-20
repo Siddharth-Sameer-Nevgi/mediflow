@@ -29,7 +29,10 @@ export async function POST() {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const result = await callNextPatient(doctorId);
+    // `session.user.id` is the User id the audit row needs; `doctorId` above is
+    // the Doctor id the queue is keyed on. Both are required — see
+    // callNextPatient.
+    const result = await callNextPatient(doctorId, session.user.id);
 
     // Emitted after callNextPatient's transaction has committed, never inside
     // it: a rolled-back transaction must not leave clients told about a change

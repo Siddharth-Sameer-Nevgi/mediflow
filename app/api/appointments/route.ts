@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { bookAppointmentSchema } from "@/lib/validations";
 import { aiService } from "@/features/ai/ai.service";
 import { calendarDateInTimeZone } from "@/lib/date";
-import { AppointmentType, Prisma } from "@prisma/client";
+import { AppointmentStatus, AppointmentType, Prisma } from "@prisma/client";
+import { resolveActorDoctorId, resolveActorHospitalId } from "@/lib/ownership";
 
 /** Statuses that mean a patient is still waiting to be seen. */
 const ACTIVE_STATUSES = ["BOOKED", "CHECKED_IN", "IN_CONSULTATION"] as const;
@@ -114,19 +115,57 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get("status");
 
   try {
-    let patientId: string | undefined;
+    // ── Scope ────────────────────────────────────────────────────────────
+    // Only the PATIENT branch existed. `patientId` stayed `undefined` for
+    // every other role, so the spread below contributed nothing and the whole
+    // filter collapsed to `{ deletedAt: null }` — any doctor or admin session
+    // paged through every appointment in the database, across all hospitals,
+    // with patient ids, notes and no-show risk scores attached. A role check
+    // was never performed here at all; being signed in was the only test.
+    //
+    // Each role now resolves its own scope from the session, through the same
+    // helpers the ownership-checked handlers use. An empty result is returned
+    // rather than a 404 because this is a list endpoint: "you have no
+    // appointments" and "you have no profile" are the same answer to the
+    // caller, and neither confirms anything about ids that exist.
+    const empty = NextResponse.json({ appointments: [], total: 0, page, limit });
 
-    if (session.user.role === "PATIENT") {
-      const patient = await prisma.patient.findUnique({
-        where: { userId: session.user.id },
-      });
-      if (!patient) return NextResponse.json({ appointments: [], total: 0 });
-      patientId = patient.id;
+    let scope: Prisma.AppointmentWhereInput;
+
+    switch (session.user.role) {
+      case "PATIENT": {
+        const patient = await prisma.patient.findUnique({
+          where: { userId: session.user.id },
+          select: { id: true },
+        });
+        if (!patient) return empty;
+        scope = { patientId: patient.id };
+        break;
+      }
+
+      case "DOCTOR": {
+        const doctorId = await resolveActorDoctorId(session.user.id);
+        if (!doctorId) return empty;
+        scope = { doctorId };
+        break;
+      }
+
+      case "ADMIN": {
+        const hospitalId = await resolveActorHospitalId(session.user.id);
+        if (!hospitalId) return empty;
+        // Appointment has no hospitalId; it hangs off the department. Same
+        // relation filter as GET /api/admin/analytics.
+        scope = { department: { hospitalId } };
+        break;
+      }
+
+      default:
+        return empty;
     }
 
-    const where = {
-      ...(patientId && { patientId }),
-      ...(status && { status: status as never }),
+    const where: Prisma.AppointmentWhereInput = {
+      ...scope,
+      ...(status && { status: status as AppointmentStatus }),
       deletedAt: null,
     };
 
@@ -137,6 +176,12 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { scheduledAt: "desc" },
         include: {
+          // `patient` was missing entirely. app/doctor/appointments/page.tsx
+          // renders `appt.patient.user.name` for every row, so `patient` came
+          // back undefined and the page threw on first render — the reported
+          // "doctor appointments not loading". Patient-facing callers never hit
+          // it because they only read the doctor side of the same payload.
+          patient: { include: { user: { select: { name: true, email: true } } } },
           doctor: { include: { user: { select: { name: true } }, department: true } },
           department: true,
           queueEntry: true,

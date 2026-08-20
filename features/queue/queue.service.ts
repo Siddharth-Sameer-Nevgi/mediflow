@@ -159,8 +159,17 @@ export async function deactivateQueueEntry(
 /**
  * Call next patient in queue. Marks current IN_CONSULTATION as COMPLETED,
  * moves next BOOKED/CHECKED_IN to IN_CONSULTATION, recalculates positions.
+ *
+ * @param actorUserId `User.id` of the doctor making the call, for the audit
+ *   row. Passed in rather than derived here because `AuditLog.userId` is a
+ *   foreign key to User, and the only user id in scope inside this function
+ *   would be a `Doctor.id` — which is what the bug below was. Mirrors
+ *   `insertEmergency(appointmentId, adminUserId)`.
  */
-export async function callNextPatient(doctorId: string): Promise<{
+export async function callNextPatient(
+  doctorId: string,
+  actorUserId: string
+): Promise<{
   calledAppointmentId: string | null;
   updatedQueue: QueueEntryWithPatient[];
   resequenced: ResequencedEntry[];
@@ -204,10 +213,20 @@ export async function callNextPatient(doctorId: string): Promise<{
       },
     });
 
-    // Audit log
+    // Audit log.
+    //
+    // This used to pass `nextEntry.appointment.doctorId`, which is a
+    // `Doctor.id`. `AuditLog.userId` is a foreign key to `User.id`
+    // (prisma/schema.prisma), and the two id spaces never overlap, so every
+    // call-next hit a P2003 foreign-key violation. The insert is the last
+    // statement in the transaction, so the whole thing rolled back — the
+    // completed consultation, the promotion to IN_CONSULTATION, the
+    // ConsultationLog and the resequence all reverted — and the route returned
+    // a 500 the UI surfaced as "Failed to call next". The feature had never
+    // worked; nothing was half-applied, because the transaction did its job.
     await tx.auditLog.create({
       data: {
-        userId: nextEntry.appointment.doctorId,
+        userId: actorUserId,
         action: "CALL_NEXT",
         entity: "Appointment",
         entityId: nextEntry.appointmentId,
